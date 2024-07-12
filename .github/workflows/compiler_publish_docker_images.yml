@@ -106,11 +106,11 @@ jobs:
         if: contains(steps.changed-files.outputs.modified_files, 'docker/Dockerfile.hpx-env') || contains(steps.changed-files.outputs.modified_files, env.THIS_FILE)
         run: echo "${{ secrets.GHCR_PASSWORD }}" | docker login -u ${{ secrets.GHCR_LOGIN }} --password-stdin ghcr.io
 
-      - name: Build Tag and Publish
-        if: ${{ steps.login.conclusion != 'skipped' }}
-        run: |
-          docker build -t "${IMAGE}" -f docker/Dockerfile.hpx-env .
-          docker push "${IMAGE}:latest"
+#      - name: Build Tag and Publish
+#        if: ${{ steps.login.conclusion != 'skipped' }}
+#        run: |
+#          docker build -t "${IMAGE}" -f docker/Dockerfile.hpx-env .
+#          docker push "${IMAGE}:latest"
 
   BuildAndPublishCUDADockerImage:
     name: Build & Publish CUDA Docker Image
@@ -145,13 +145,13 @@ jobs:
         if: contains(steps.changed-files.outputs.modified_files, '${{ matrix.dockerfile }}') || contains(steps.changed-files.outputs.modified_files, env.THIS_FILE)
         run: echo "${{ secrets.GHCR_PASSWORD }}" | docker login -u ${{ secrets.GHCR_LOGIN }} --password-stdin ghcr.io
 
-      - name: Build Tag and Publish
-        if: ${{ steps.login.conclusion != 'skipped' }}
-        run: |
-          docker build -t "${IMAGE}" -f ${{ matrix.dockerfile }} .
-          docker image tag "${IMAGE}" "${IMAGE}:${{ matrix.tag }}"
-          docker push "${IMAGE}:${{ matrix.tag }}"
+#      - name: Build Tag and Publish
+#        if: ${{ steps.login.conclusion != 'skipped' }}
+#        run: |
+#          docker build -t "${IMAGE}" -f ${{ matrix.dockerfile }} .
+#          docker image tag "${IMAGE}" "${IMAGE}:${{ matrix.tag }}"
+#          docker push "${IMAGE}:${{ matrix.tag }}"
 
-      - name: Push Latest Image
-        if: ${{ steps.login.conclusion != 'skipped' && matrix.tag == '11-8' }}
-        run: docker push "${IMAGE}:latest"
+#      - name: Push Latest Image
+#        if: ${{ steps.login.conclusion != 'skipped' && matrix.tag == '11-8' }}
+#        run: docker push "${IMAGE}:latest"
