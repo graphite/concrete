@@ -10,12 +10,13 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
-from concrete.compiler import EvaluationKeys, ValueDecrypter, ValueExporter
 
 from .keys import Keys
 from .specs import ClientSpecs
 from .utils import validate_input_args
-from .value import Value
+from .evaluation_keys import EvaluationKeys
+
+from concrete.compiler import Value, ClientProgram, Keyset, KeysetCache, TransportValue
 
 # pylint: enable=import-error,no-member,no-name-in-module
 
@@ -25,16 +26,20 @@ class Client:
     Client class, which can be used to manage keys, encrypt arguments and decrypt results.
     """
 
-    specs: ClientSpecs
-    _keys: Keys
+    _client_specs: ClientSpecs
+    _keys: Optional[Keys]
 
     def __init__(
         self,
         client_specs: ClientSpecs,
         keyset_cache_directory: Optional[Union[str, Path]] = None,
+        is_simulated: bool = False
     ):
-        self.specs = client_specs
-        self._keys = Keys(client_specs, keyset_cache_directory)
+        self._client_specs = client_specs
+        self._keys = None
+        if not is_simulated:
+            self._keys = Keys(client_specs, keyset_cache_directory)
+            self._keys.generate()
 
     def save(self, path: Union[str, Path]):
         """
@@ -47,7 +52,7 @@ class Client:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             with open(Path(tmp_dir) / "client.specs.json", "wb") as f:
-                f.write(self.specs.serialize())
+                f.write(self._client_specs.serialize())
 
             path = str(path)
             if path.endswith(".zip"):
@@ -59,6 +64,7 @@ class Client:
     def load(
         path: Union[str, Path],
         keyset_cache_directory: Optional[Union[str, Path]] = None,
+        is_simulated: bool = False
     ) -> "Client":
         """
         Load the client from the given path in zip format.
@@ -70,6 +76,9 @@ class Client:
             keyset_cache_directory (Optional[Union[str, Path]], default = None):
                 keyset cache directory to use
 
+            is_simulated (bool, default = False):
+                should perform
+
         Returns:
             Client:
                 client loaded from the filesystem
@@ -80,10 +89,10 @@ class Client:
             with open(Path(tmp_dir) / "client.specs.json", "rb") as f:
                 client_specs = ClientSpecs.deserialize(f.read())
 
-        return Client(client_specs, keyset_cache_directory)
+        return Client(client_specs, keyset_cache_directory, is_simulated)
 
     @property
-    def keys(self) -> Keys:
+    def keys(self) -> Optional[Keys]:
         """
         Get the keys for the client.
         """
@@ -96,10 +105,13 @@ class Client:
         """
         # TODO: implement verification for compatibility with keyset.
 
+        assert self._keys is not None, "Tried to set keys on simulated client."
+        assert new_keys._specs == self._keys._specs, "Keyset is incompatible with client."
+        assert new_keys.are_generated, "Keyset is not generated."
         self._keys = new_keys
 
     def keygen(
-        self, force: bool = False, seed: Optional[int] = None, encryption_seed: Optional[int] = None
+        self, force: bool = False, secret_seed: Optional[int] = None, encryption_seed: Optional[int] = None
     ):
         """
         Generate keys required for homomorphic evaluation.
@@ -108,20 +120,21 @@ class Client:
             force (bool, default = False):
                 whether to generate new keys even if keys are already generated
 
-            seed (Optional[int], default = None):
+            secret_seed (Optional[int], default = None):
                 seed for private keys randomness
 
             encryption_seed (Optional[int], default = None):
                 seed for encryption randomness
         """
 
-        self.keys.generate(force=force, seed=seed, encryption_seed=encryption_seed)
+        assert self._keys is not None, "Tried to generate keys on simulated client."
+        self._keys.generate(force=force, secret_seed=secret_seed, encryption_seed=encryption_seed)
 
     def encrypt(
         self,
         *args: Optional[Union[int, np.ndarray, List]],
         function_name: Optional[str] = None,
-    ) -> Optional[Union[Value, Tuple[Optional[Value], ...]]]:
+    ) -> Optional[Union[TransportValue, Tuple[Optional[TransportValue], ...]]]:
         """
         Encrypt argument(s) to for evaluation.
 
@@ -132,9 +145,12 @@ class Client:
                 name of the function to encrypt
 
         Returns:
-            Optional[Union[Value, Tuple[Optional[Value], ...]]]:
+            Optional[Union[TransportValue, Tuple[Optional[TransportValue], ...]]]:
                 encrypted argument(s) for evaluation
         """
+
+        assert self._keys is not None, "Tried to encrypt on a simulated client."
+        assert self._keys._keyset is not None
 
         if function_name is None:
             functions = self.specs.client_parameters.function_list()
@@ -145,21 +161,51 @@ class Client:
 Provide a `function_name` keyword argument to disambiguate."
                 raise TypeError(msg)
 
-        ordered_sanitized_args = validate_input_args(self.specs, *args, function_name=function_name)
+        ordered_sanitized_args = validate_input_args(self._client_specs, *args, function_name=function_name)
+        client_program = ClientProgram.create_encrypted(self._client_specs.program_info, self._keys._keyset)
+        client_circuit = client_program.get_client_circuit(function_name)
 
-        self.keygen(force=False)
-        keyset = self.keys._keyset  # pylint: disable=protected-access
-
-        exporter = ValueExporter.new(keyset, self.specs.client_parameters, function_name)
         exported = [
             (
                 None
                 if arg is None
-                else Value(
-                    exporter.export_tensor(position, arg.flatten().tolist(), list(arg.shape))
-                    if isinstance(arg, np.ndarray) and arg.shape != ()
-                    else exporter.export_scalar(position, int(arg))
-                )
+                else client_circuit.prepare_input(Value(arg),position)
+            )
+            for position, arg in enumerate(ordered_sanitized_args)
+        ]
+
+        return tuple(exported) if len(exported) != 1 else exported[0]
+
+    def simulate_encrypt(
+        self,
+        *args: Optional[Union[int, np.ndarray, List]],
+        function_name: str = "main",
+    ) -> Optional[Union[TransportValue, Tuple[Optional[TransportValue], ...]]]:
+        """
+        Simulate encryption of argument(s) for evaluation.
+
+        Args:
+            *args (Optional[Union[int, np.ndarray, List]]):
+                argument(s) for evaluation
+            function_name (str):
+                name of the function to encrypt
+
+        Returns:
+            Optional[Union[TransportValue, Tuple[Optional[TransportValue], ...]]]:
+                encrypted argument(s) for evaluation
+        """
+
+        assert self._keys is None, "Tried to simulate encryption on an encrypted client."
+
+        ordered_sanitized_args = validate_input_args(self._client_specs, *args, function_name=function_name)
+        client_program = ClientProgram.create_simulated(self._client_specs.program_info)
+        client_circuit = client_program.get_client_circuit(function_name)
+
+        exported = [
+            (
+                None
+                if arg is None
+                else client_circuit.simulate_prepare_input(Value(arg),position)
             )
             for position, arg in enumerate(ordered_sanitized_args)
         ]
@@ -168,14 +214,55 @@ Provide a `function_name` keyword argument to disambiguate."
 
     def decrypt(
         self,
-        *results: Union[Value, Tuple[Value, ...]],
+        *results: Union[TransportValue, Tuple[TransportValue, ...]],
         function_name: Optional[str] = None,
     ) -> Optional[Union[int, np.ndarray, Tuple[Optional[Union[int, np.ndarray]], ...]]]:
         """
         Decrypt result(s) of evaluation.
 
         Args:
-            *results (Union[Value, Tuple[Value, ...]]):
+            *results (Union[TransportValue, Tuple[TransportValue, ...]]):
+                result(s) of evaluation
+            function_name (str):
+                name of the function to decrypt for
+
+        Returns:
+            Optional[Union[int, np.ndarray, Tuple[Optional[Union[int, np.ndarray]], ...]]]:
+                decrypted result(s) of evaluation
+        """
+
+        flattened_results: List[TransportValue] = []
+        for result in results:
+            if isinstance(result, tuple):  # pragma: no cover
+                # this branch is impossible to cover without multiple outputs
+                flattened_results.extend(result)
+            else:
+                flattened_results.append(result)
+
+        assert self._keys is not None, "Tried to decrypt on a simulated client."
+        assert self._keys._keyset is not None
+
+        client_program = ClientProgram.create_encrypted(self._client_specs.program_info, self._keys._keyset)
+        client_circuit = client_program.get_client_circuit(function_name)
+
+        decrypted = tuple(
+            client_circuit.process_output(result, position).to_py_val()
+            for position, result in enumerate(flattened_results)
+        )
+
+        return decrypted if len(decrypted) != 1 else decrypted[0]
+
+
+    def simulate_decrypt(
+        self,
+        *results: Union[TransportValue, Tuple[TransportValue, ...]],
+        function_name: str = "main",
+    ) -> Optional[Union[int, np.ndarray, Tuple[Optional[Union[int, np.ndarray]], ...]]]:
+        """
+        Simulate decryption of result(s) of evaluation.
+
+        Args:
+            *results (Union[TransportValue, Tuple[TransportValue, ...]]):
                 result(s) of evaluation
             function_name (str):
                 name of the function to decrypt for
@@ -194,7 +281,7 @@ Provide a `function_name` keyword argument to disambiguate."
 Provide a `function_name` keyword argument to disambiguate."
                 raise TypeError(msg)
 
-        flattened_results: List[Value] = []
+        flattened_results: List[TransportValue] = []
         for result in results:
             if isinstance(result, tuple):  # pragma: no cover
                 # this branch is impossible to cover without multiple outputs
@@ -202,12 +289,13 @@ Provide a `function_name` keyword argument to disambiguate."
             else:
                 flattened_results.append(result)
 
-        self.keygen(force=False)
-        keyset = self.keys._keyset  # pylint: disable=protected-access
+        assert self._keys is None, "Tried to simulate decryption on an encrypted client."
 
-        decrypter = ValueDecrypter.new(keyset, self.specs.client_parameters, function_name)
+        client_program = ClientProgram.create_simulated(self._client_specs.program_info)
+        client_circuit = client_program.get_client_circuit(function_name)
+
         decrypted = tuple(
-            decrypter.decrypt(position, result.inner)
+            client_circuit.process_output(result, position).to_py_val()
             for position, result in enumerate(flattened_results)
         )
 
@@ -223,5 +311,6 @@ Provide a `function_name` keyword argument to disambiguate."
                 evaluation keys for encrypted computation
         """
 
+        assert self._keys is not None, "Tried to get evaluation keys from simulated client."
         self.keygen(force=False)
-        return self.keys.evaluation
+        return self._keys.evaluation

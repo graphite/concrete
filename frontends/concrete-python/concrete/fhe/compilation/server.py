@@ -17,16 +17,13 @@ import numpy as np
 from concrete.compiler import (
     CompilationContext,
     CompilationOptions,
-    EvaluationKeys,
-    LibraryCompilationResult,
-    LibrarySupport,
-    Parameter,
     ProgramCompilationFeedback,
     PublicArguments,
     ServerProgram,
-    SimulatedValueExporter,
+    Compiler,
     set_compiler_logging,
     set_llvm_debug_flag,
+    lookup_runtime_lib
 )
 from mlir._mlir_libs._concretelang._compiler import (
     Backend,
@@ -39,6 +36,7 @@ from mlir.ir import Module as MlirModule
 
 from ..internal.utils import assert_that
 from .composition import CompositionClause, CompositionRule
+from .evaluation_keys import EvaluationKeys
 from .configuration import (
     DEFAULT_GLOBAL_P_ERROR,
     DEFAULT_P_ERROR,
@@ -48,7 +46,6 @@ from .configuration import (
 )
 from .specs import ClientSpecs
 from .utils import friendly_type_format
-from .value import Value
 
 # pylint: enable=import-error,no-member,no-name-in-module
 
@@ -58,39 +55,26 @@ class Server:
     Server class, which can be used to perform homomorphic computation.
     """
 
-    client_specs: ClientSpecs
     is_simulated: bool
 
-    _output_dir: Union[None, str, Path]
-    _support: LibrarySupport
-    _compilation_result: LibraryCompilationResult
-    _compilation_feedback: ProgramCompilationFeedback
-    _server_program: ServerProgram
-
+    _compiler: Compiler
     _mlir: Optional[str]
     _configuration: Optional[Configuration]
     _composition_rules: Optional[List[CompositionRule]]
-
     _clear_input_indices: Dict[str, Set[int]]
     _clear_input_shapes: Dict[str, Dict[int, Tuple[int, ...]]]
 
     def __init__(
         self,
-        client_specs: ClientSpecs,
         output_dir: Union[None, str, Path],
-        support: LibrarySupport,
-        compilation_result: LibraryCompilationResult,
+        compiler: Compiler,
         server_program: ServerProgram,
         is_simulated: bool,
         composition_rules: Optional[List[CompositionRule]],
     ):
-        self.client_specs = client_specs
         self.is_simulated = is_simulated
 
-        self._output_dir = output_dir
-        self._support = support
-        self._compilation_result = compilation_result
-        self._compilation_feedback = self._support.load_compilation_feedback(compilation_result)
+        self._compiler = compiler
         self._server_program = server_program
         self._mlir = None
         self._composition_rules = composition_rules
@@ -98,7 +82,7 @@ class Server:
         self._clear_input_indices = {}
         self._clear_input_shapes = {}
 
-        functions_parameters = json.loads(client_specs.client_parameters.serialize())["circuits"]
+        functions_parameters = json.loads(compiler.get_program_info().serialize())["circuits"]
         for function_parameters in functions_parameters:
             name = function_parameters["name"]
             self._clear_input_indices[name] = {
@@ -112,10 +96,9 @@ class Server:
                 if "plaintext" in input_spec["typeInfo"]
             }
 
-        assert_that(
-            support.load_client_parameters(compilation_result).serialize()
-            == client_specs.client_parameters.serialize()
-        )
+    @property
+    def client_specs(self) -> ClientSpecs:
+        return ClientSpecs(self._compiler.get_program_info())
 
     @staticmethod
     def create(
@@ -231,11 +214,11 @@ class Server:
             output_dir = tempfile.mkdtemp()
             output_dir_path = Path(output_dir)
 
-            support = LibrarySupport.new(
-                str(output_dir_path), generateCppHeader=False, generateStaticLib=False
+            compiler = Compiler(
+                str(output_dir_path), lookup_runtime_lib()
             )
             if isinstance(mlir, str):
-                compilation_result = support.compile(mlir, options)
+                feeback = compiler.compile(mlir, options)
             else:  # MlirModule
                 assert (
                     compilation_context is not None
@@ -460,7 +443,7 @@ Provide a `function_name` keyword argument to disambiguate."
                 # internal representation as "simulation" fhe.Values
 
                 exporter = SimulatedValueExporter.new(
-                    self.client_specs.client_parameters,
+                    self.client_specs.program_info,
                     function_name,
                 )
 
@@ -475,7 +458,7 @@ Provide a `function_name` keyword argument to disambiguate."
             else:
                 buffers.append(arg)
 
-        public_args = PublicArguments.new(self.client_specs.client_parameters, buffers)
+        public_args = PublicArguments.new(self.client_specs.program_info, buffers)
         server_circuit = self._server_program.get_server_circuit(function_name)
 
         if self.is_simulated:
@@ -571,7 +554,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_parameter(
             operations={PrimitiveOperation.PBS, PrimitiveOperation.WOP_PBS},
             key_types={KeyType.BOOTSTRAP},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     def programmable_bootstrap_count_per_tag(self, function: str) -> Dict[str, int]:
@@ -591,7 +574,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
             operations={PrimitiveOperation.PBS, PrimitiveOperation.WOP_PBS},
             key_types={KeyType.BOOTSTRAP},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     # Key Switch Statistics
@@ -611,7 +594,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_parameter(
             operations={PrimitiveOperation.KEY_SWITCH, PrimitiveOperation.WOP_PBS},
             key_types={KeyType.KEY_SWITCH},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     def key_switch_count_per_tag(self, function: str) -> Dict[str, int]:
@@ -631,7 +614,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
             operations={PrimitiveOperation.KEY_SWITCH, PrimitiveOperation.WOP_PBS},
             key_types={KeyType.KEY_SWITCH},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     # Packing Key Switch Statistics
@@ -651,7 +634,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_parameter(
             operations={PrimitiveOperation.WOP_PBS},
             key_types={KeyType.PACKING_KEY_SWITCH},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     def packing_key_switch_count_per_tag(self, function: str) -> Dict[str, int]:
@@ -671,7 +654,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
             operations={PrimitiveOperation.WOP_PBS},
             key_types={KeyType.PACKING_KEY_SWITCH},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     # Clear Addition Statistics
@@ -691,7 +674,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_parameter(
             operations={PrimitiveOperation.CLEAR_ADDITION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     def clear_addition_count_per_tag(self, function: str) -> Dict[str, int]:
@@ -711,7 +694,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
             operations={PrimitiveOperation.CLEAR_ADDITION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     # Encrypted Addition Statistics
@@ -731,7 +714,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_parameter(
             operations={PrimitiveOperation.ENCRYPTED_ADDITION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     def encrypted_addition_count_per_tag(self, function: str) -> Dict[str, int]:
@@ -751,7 +734,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
             operations={PrimitiveOperation.ENCRYPTED_ADDITION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     # Clear Multiplication Statistics
@@ -771,7 +754,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_parameter(
             operations={PrimitiveOperation.CLEAR_MULTIPLICATION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     def clear_multiplication_count_per_tag(self, function: str) -> Dict[str, int]:
@@ -791,7 +774,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
             operations={PrimitiveOperation.CLEAR_MULTIPLICATION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     # Encrypted Negation Statistics
@@ -811,7 +794,7 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_parameter(
             operations={PrimitiveOperation.ENCRYPTED_NEGATION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )
 
     def encrypted_negation_count_per_tag(self, function: str) -> Dict[str, int]:
@@ -831,5 +814,5 @@ Provide a `function_name` keyword argument to disambiguate."
         return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
             operations={PrimitiveOperation.ENCRYPTED_NEGATION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.client_parameters,
+            client_parameters=self.client_specs.program_info,
         )

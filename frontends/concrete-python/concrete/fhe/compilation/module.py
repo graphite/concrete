@@ -10,9 +10,9 @@ from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Tuple, Union
 import numpy as np
 from concrete.compiler import (
     CompilationContext,
+    Value,
     Parameter,
-    SimulatedValueDecrypter,
-    SimulatedValueExporter,
+    TransportValue
 )
 from mlir.ir import Module as MlirModule
 
@@ -24,7 +24,6 @@ from .configuration import Configuration
 from .keys import Keys
 from .server import Server
 from .utils import Lazy, validate_input_args
-from .value import Value
 
 # pylint: enable=import-error,no-member,no-name-in-module
 
@@ -43,6 +42,7 @@ class SimulationRt(NamedTuple):
     Runtime object class for simulation.
     """
 
+    client: Client
     server: Server
 
 
@@ -123,75 +123,17 @@ class FheFunction:
     def __repr__(self) -> str:
         return f"FheFunction(name={self.name})"
 
-    def simulate(self, *args: Any) -> Any:
-        """
-        Simulate execution of the function.
+    def _simulate_encrypt(
+        self,
+        *args: Optional[Union[int, np.ndarray, List]],
+    ) -> Optional[Union[TransportValue, Tuple[Optional[TransportValue], ...]]]:
 
-        Args:
-            *args (Any):
-                inputs to the function
-
-        Returns:
-            Any:
-                result of the simulation
-        """
-
-        ordered_validated_args = validate_input_args(
-            self.simulation_runtime.val.server.client_specs, *args, function_name=self.name
-        )
-
-        exporter = SimulatedValueExporter.new(
-            self.simulation_runtime.val.server.client_specs.client_parameters, self.name
-        )
-        exported = [
-            (
-                None
-                if arg is None
-                else Value(
-                    exporter.export_tensor(position, arg.flatten().tolist(), list(arg.shape))
-                    if isinstance(arg, np.ndarray) and arg.shape != ()
-                    else exporter.export_scalar(position, int(arg))
-                )
-            )
-            for position, arg in enumerate(ordered_validated_args)
-        ]
-
-        results = self.simulation_runtime.val.server.run(*exported, function_name=self.name)
-        if not isinstance(results, tuple):
-            results = (results,)
-
-        decrypter = SimulatedValueDecrypter.new(
-            self.simulation_runtime.val.server.client_specs.client_parameters, self.name
-        )
-        decrypted = tuple(
-            decrypter.decrypt(position, result.inner) for position, result in enumerate(results)
-        )
-        return decrypted if len(decrypted) != 1 else decrypted[0]
-
-    def encrypt(
-        self, *args: Optional[Union[int, np.ndarray, List]]
-    ) -> Optional[Union[Value, Tuple[Optional[Value], ...]]]:
-        """
-        Encrypt argument(s) to for evaluation.
-
-        Args:
-            *args (Optional[Union[int, numpy.ndarray, List]]):
-                argument(s) for evaluation
-
-        Returns:
-            Optional[Union[Value, Tuple[Optional[Value], ...]]]:
-                encrypted argument(s) for evaluation
-        """
-
-        if self.configuration.simulate_encrypt_run_decrypt:
-            return args if len(args) != 1 else args[0]  # type: ignore
-
-        return self.execution_runtime.val.client.encrypt(*args, function_name=self.name)
+        return self.simulation_runtime.val.client.encrypt(*args, function_name=self.name)
 
     def run(
         self,
-        *args: Optional[Union[Value, Tuple[Optional[Value], ...]]],
-    ) -> Union[Value, Tuple[Value, ...]]:
+        *args: Optional[Union[TransportValue, Tuple[Optional[TransportValue], ...]]],
+    ) -> Union[TransportValue, Tuple[TransportValue, ...]]:
         """
         Evaluate the function.
 
@@ -215,7 +157,123 @@ class FheFunction:
 
     def decrypt(
         self,
-        *results: Union[Value, Tuple[Value, ...]],
+        *results: Union[TransportValue, Tuple[TransportValue, ...]],
+    ) -> Optional[Union[int, np.ndarray, Tuple[Optional[Union[int, np.ndarray]], ...]]]:
+        """
+        Decrypt result(s) of evaluation.
+
+        Args:
+            *results (Union[Value, Tuple[Value, ...]]):
+                result(s) of evaluation
+
+        Returns:
+            Optional[Union[int, np.ndarray, Tuple[Optional[Union[int, np.ndarray]], ...]]]:
+                decrypted result(s) of evaluation
+        """
+
+        if self.configuration.simulate_encrypt_run_decrypt:
+            return results if len(results) != 1 else results[0]  # type: ignore
+
+        return self.execution_runtime.val.client.decrypt(*results, function_name=self.name)
+
+    def encrypt_run_decrypt(self, *args: Any) -> Any:
+        """
+        Encrypt inputs, run the function, and decrypt the outputs in one go.
+
+        Args:
+            *args (Union[int, numpy.ndarray]):
+                inputs to the function
+
+        Returns:
+            Union[int, np.ndarray, Tuple[Union[int, np.ndarray], ...]]:
+                clear result of homomorphic evaluation
+        """
+        return self.decrypt(self.run(self.encrypt(*args)))
+
+
+    def simulate(self, *args: Any) -> Any:
+        """
+        Simulate execution of the function.
+
+        Args:
+            *args (Any):
+                inputs to the function
+
+        Returns:
+            Any:
+                result of the simulation
+        """
+
+        ordered_validated_args = validate_input_args(
+            self.simulation_runtime.val.server.client_specs, *args, function_name=self.name
+        )
+
+        unprepared_args = [Value(arg) for position, arg in enumerate(ordered_validated_args)]
+
+        prepared_args = [self.simulation_runtime.val.client.encrypt()]
+
+
+        results = self.simulation_runtime.val.server.run(*exported, function_name=self.name)
+        if not isinstance(results, tuple):
+            results = (results,)
+
+        decrypter = SimulatedValueDecrypter.new(
+            self.simulation_runtime.val.server.client_specs.program_info, self.name
+        )
+        decrypted = tuple(
+            decrypter.decrypt(position, result.inner) for position, result in enumerate(results)
+        )
+        return decrypted if len(decrypted) != 1 else decrypted[0]
+
+    def encrypt(
+        self,
+        *args: Optional[Union[int, np.ndarray, List]],
+    ) -> Optional[Union[TransportValue, Tuple[Optional[TransportValue], ...]]]:
+        """
+        Encrypt argument(s) to for evaluation.
+
+        Args:
+            *args (Optional[Union[int, numpy.ndarray, List]]):
+                argument(s) for evaluation
+
+        Returns:
+            Optional[Union[Value, Tuple[Optional[Value], ...]]]:
+                encrypted argument(s) for evaluation
+        """
+
+        if self.configuration.simulate_encrypt_run_decrypt:
+            return args if len(args) != 1 else args[0]  # type: ignore
+
+        return self.execution_runtime.val.client.encrypt(*args, function_name=self.name)
+
+    def run(
+        self,
+        *args: Optional[Union[TransportValue, Tuple[Optional[TransportValue], ...]]],
+    ) -> Union[TransportValue, Tuple[TransportValue, ...]]:
+        """
+        Evaluate the function.
+
+        Args:
+            *args (Value):
+                argument(s) for evaluation
+
+        Returns:
+            Union[Value, Tuple[Value, ...]]:
+                result(s) of evaluation
+        """
+
+        if self.configuration.simulate_encrypt_run_decrypt:
+            return self.simulate(*args)
+
+        return self.execution_runtime.val.server.run(
+            *args,
+            evaluation_keys=self.execution_runtime.val.client.evaluation_keys,
+            function_name=self.name,
+        )
+
+    def decrypt(
+        self,
+        *results: Union[TransportValue, Tuple[TransportValue, ...]],
     ) -> Optional[Union[int, np.ndarray, Tuple[Optional[Union[int, np.ndarray]], ...]]]:
         """
         Decrypt result(s) of evaluation.
@@ -597,7 +655,8 @@ class FheModule:
                 is_simulated=True,
                 compilation_context=self.compilation_context,
             )
-            return SimulationRt(simulation_server)
+            simulation_client = Client(simulation_server.client_specs)
+            return SimulationRt(simulation_client, simulation_server)
 
         self.simulation_runtime = Lazy(init_simulation)
         if configuration.fhe_simulation:

@@ -15,35 +15,40 @@ from mlir._mlir_libs._concretelang._compiler import round_trip as _round_trip
 from mlir._mlir_libs._concretelang._compiler import (
     set_llvm_debug_flag,
     set_compiler_logging,
+    LweSecretKeyParam,
+    BootstrapKeyParam,
+    KeyswitchKeyParam,
+    PackingKeyswitchKeyParam,
+    ProgramInfo,
+    ProgramCompilationFeedback,
+    CircuitCompilationFeedback,
+    CompilationOptions,
+    CompilationContext,
+    KeysetCache,
+    ServerKeyset,
+    Library,
+    Keyset,
+    Compiler,
+    TransportValue,
+    Value,
+    PublicArguments,
+    PublicResults,
+    ServerProgram,
+    ServerCircuit,
+    ClientProgram,
+    ClientCircuit
 )
 
 # pylint: enable=no-name-in-module,import-error
 
-from .compilation_options import CompilationOptions, Encoding
-from .compilation_context import CompilationContext
-from .key_set_cache import KeySetCache
-from .client_parameters import ClientParameters
-from .compilation_feedback import ProgramCompilationFeedback, CircuitCompilationFeedback
-from .key_set import KeySet
-from .public_result import PublicResult
-from .public_arguments import PublicArguments
-from .lambda_argument import LambdaArgument
-from .library_compilation_result import LibraryCompilationResult
-from .library_lambda import LibraryLambda
-from .client_support import ClientSupport
-from .library_support import LibrarySupport
-from .evaluation_keys import EvaluationKeys
+
+from .compilation_options import Encoding
+from .utils import lookup_runtime_lib
+
 from .tfhers_int import (
     TfhersExporter,
     TfhersFheIntDescription,
 )
-from .value import Value
-from .value_decrypter import ValueDecrypter
-from .value_exporter import ValueExporter
-from .simulated_value_decrypter import SimulatedValueDecrypter
-from .simulated_value_exporter import SimulatedValueExporter
-from .parameter import Parameter
-from .server_program import ServerProgram
 
 
 def init_dfr():

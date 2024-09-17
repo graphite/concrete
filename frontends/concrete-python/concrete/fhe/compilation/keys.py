@@ -8,9 +8,12 @@ import pathlib
 from pathlib import Path
 from typing import Optional, Union
 
-from concrete.compiler import ClientSupport, EvaluationKeys, KeySet, KeySetCache
+from concrete.compiler import KeysetCache, Keyset
+
+import concrete.compiler
 
 from .specs import ClientSpecs
+from .evaluation_keys import EvaluationKeys
 
 # pylint: enable=import-error,no-name-in-module
 
@@ -23,25 +26,18 @@ class Keys:
     Be careful when serializing/saving keys!
     """
 
-    client_specs: Optional[ClientSpecs]
-    cache_directory: Optional[Union[str, Path]]
-
-    _keyset_cache: Optional[KeySetCache]
-    _keyset: Optional[KeySet]
+    _cache: Optional[KeysetCache]
+    _specs: Optional[ClientSpecs]
+    _keyset: Optional[Keyset]
 
     def __init__(
         self,
-        client_specs: Optional[ClientSpecs],
+        specs: Optional[ClientSpecs],
         cache_directory: Optional[Union[str, Path]] = None,
     ):
-        self.client_specs = client_specs
-        self.cache_directory = cache_directory
-
-        self._keyset_cache = None
+        self._cache = KeysetCache(str(cache_directory)) if cache_directory is not None else None
+        self._specs = specs
         self._keyset = None
-
-        if cache_directory is not None:
-            self._keyset_cache = KeySetCache.new(str(cache_directory))
 
     @property
     def are_generated(self) -> bool:
@@ -54,7 +50,7 @@ class Keys:
     def generate(
         self,
         force: bool = False,
-        seed: Optional[int] = None,
+        secret_seed: Optional[int] = None,
         encryption_seed: Optional[int] = None,
     ):
         """
@@ -72,15 +68,22 @@ class Keys:
         """
 
         if self._keyset is None or force:
-            if self.client_specs is None:  # pragma: no cover
+            if self._specs is None:  # pragma: no cover
                 message = "Tried to generate Keys without client specs."
                 raise ValueError(message)
-            self._keyset = ClientSupport.key_set(
-                self.client_specs.client_parameters,
-                self._keyset_cache,
-                seed,
-                encryption_seed,
-            )
+
+            secret_seed = 0 if secret_seed is None else secret_seed
+            encryption_seed = 0 if encryption_seed is None else encryption_seed
+            if secret_seed < 0 or secret_seed >= 2**128:
+                raise ValueError("secret_seed must be a positive 128 bits integer")
+            if encryption_seed < 0 or encryption_seed >= 2**128:
+                raise ValueError("encryption_seed must be a positive 128 bits integer")
+            secret_seed_msb = (secret_seed >> 64) & 0xFFFFFFFFFFFFFFFF
+            secret_seed_lsb = (secret_seed) & 0xFFFFFFFFFFFFFFFF
+            encryption_seed_msb = (encryption_seed >> 64) & 0xFFFFFFFFFFFFFFFF
+            encryption_seed_lsb = (encryption_seed) & 0xFFFFFFFFFFFFFFFF
+
+            self._keyset = Keyset(self._specs.program_info, self._cache, secret_seed_msb, secret_seed_lsb, encryption_seed_msb, encryption_seed_lsb)
 
     def save(self, location: Union[str, Path]):
         """
@@ -120,18 +123,16 @@ class Keys:
 
         keys = Keys.deserialize(bytes(location.read_bytes()))
 
-        self.client_specs = None
-        self.cache_directory = None
-
         # pylint: disable=protected-access
-        self._keyset_cache = None
+        self._specs = None
+        self._cache = None
         self._keyset = keys._keyset
         # pylint: enable=protected-access
 
     def load_if_exists_generate_and_save_otherwise(
         self,
         location: Union[str, Path],
-        seed: Optional[int] = None,
+        secret_seed: Optional[int] = None,
     ):
         """
         Load keys from a location if they exist, else generate new keys and save to that location.
@@ -150,7 +151,7 @@ class Keys:
         if location.exists():
             self.load(location)
         else:
-            self.generate(seed=seed)
+            self.generate(secret_seed=secret_seed)
             self.save(location)
 
     def serialize(self) -> bytes:
@@ -185,7 +186,7 @@ class Keys:
                 deserialized keys
         """
 
-        keyset = KeySet.deserialize(serialized_keys)
+        keyset = Keyset.deserialize(serialized_keys)
 
         # pylint: disable=protected-access
         result = Keys(None)
@@ -202,5 +203,4 @@ class Keys:
 
         self.generate(force=False)
         assert self._keyset is not None
-
-        return self._keyset.get_evaluation_keys()
+        return EvaluationKeys(self._keyset.get_server_keys())

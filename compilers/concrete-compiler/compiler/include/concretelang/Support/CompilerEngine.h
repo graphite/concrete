@@ -215,16 +215,16 @@ public:
     const std::string &getOutputDirPath() const;
 
     /// Returns the path of the shared library
-    static std::string getSharedLibraryPath(std::string outputDirPath);
+    std::string getSharedLibraryPath() const;
 
     /// Returns the path of the static library
-    static std::string getStaticLibraryPath(std::string outputDirPath);
+    std::string getStaticLibraryPath() const;
 
     /// Returns the path of the program info
-    static std::string getProgramInfoPath(std::string outputDirPath);
+    std::string getProgramInfoPath() const;
 
     /// Returns the path of the compilation feedback
-    static std::string getCompilationFeedbackPath(std::string outputDirPath);
+    std::string getCompilationFeedbackPath() const;
 
     // For advanced use
     const static std::string OBJECT_EXT, LINKER, LINKER_SHARED_OPT, AR,

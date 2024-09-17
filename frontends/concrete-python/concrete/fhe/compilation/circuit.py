@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-from concrete.compiler import CompilationContext, Parameter
 from mlir.ir import Module as MlirModule
 
 from ..representation import Graph
@@ -108,7 +107,36 @@ class Circuit:
             Any:
                 result of the simulation
         """
-        return self._function.simulate(*args)
+
+        if not hasattr(self, "simulator"):  # pragma: no cover
+            self.enable_fhe_simulation()
+
+        ordered_validated_args = validate_input_args(self.simulator.client_specs, *args)
+
+        exporter = SimulatedValueExporter.new(self.simulator.client_specs.program_info)
+        exported = [
+            (
+                None
+                if arg is None
+                else Value(
+                    exporter.export_tensor(position, arg.flatten().tolist(), list(arg.shape))
+                    if isinstance(arg, np.ndarray) and arg.shape != ()
+                    else exporter.export_scalar(position, int(arg))
+                )
+            )
+            for position, arg in enumerate(ordered_validated_args)
+        ]
+
+        results = self.simulator.run(*exported)
+        if not isinstance(results, tuple):
+            results = (results,)
+
+        decrypter = SimulatedValueDecrypter.new(self.simulator.client_specs.program_info)
+        decrypted = tuple(
+            decrypter.decrypt(position, result.inner) for position, result in enumerate(results)
+        )
+
+        return decrypted if len(decrypted) != 1 else decrypted[0]
 
     @property
     def keys(self) -> Keys:

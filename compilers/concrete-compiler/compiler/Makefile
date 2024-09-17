@@ -186,6 +186,7 @@ concretecompiler: build-initialized
 python-bindings: build-initialized
 	cmake --build $(BUILD_DIR) --target ConcretelangMLIRPythonModules
 	cmake --build $(BUILD_DIR) --target ConcretelangPythonModules
+	PYTHONPATH=${PYTHONPATH}:$(BUILD_DIR)/tools/concretelang/python_packages/concretelang_core LD_PRELOAD=$(BUILD_DIR)/lib/libConcretelangRuntime.so pybind11-stubgen mlir._mlir_libs._concretelang._compiler --exit-code -o $(BUILD_DIR)/tools/concretelang/python_packages/concretelang_core
 
 clientlib: build-initialized
 	cmake --build $(BUILD_DIR) --target ConcretelangClientLib

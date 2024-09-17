@@ -65,6 +65,36 @@
 #include "concretelang/Support/Utils.h"
 #include <concretelang/Runtime/GPUDFG.hpp>
 
+namespace{
+    /// Returns the path of the shared library
+    std::string getSharedLibraryPath(std::string outputDirPath) {
+      llvm::SmallString<0> sharedLibraryPath(outputDirPath);
+      llvm::sys::path::append(sharedLibraryPath, "sharedlib" + mlir::concretelang::CompilerEngine::Library::DOT_SHARED_LIB_EXT);
+      return sharedLibraryPath.str().str();
+    }
+
+    /// Returns the path of the static library
+    std::string getStaticLibraryPath(std::string outputDirPath) {
+      llvm::SmallString<0> staticLibraryPath(outputDirPath);
+      llvm::sys::path::append(staticLibraryPath, "staticlib" + mlir::concretelang::CompilerEngine::Library::DOT_STATIC_LIB_EXT);
+      return staticLibraryPath.str().str();
+    }
+
+    /// Returns the path of the client parameter
+    std::string getProgramInfoPath(std::string outputDirPath) {
+      llvm::SmallString<0> programInfoPath(outputDirPath);
+      llvm::sys::path::append(programInfoPath, "program_info.concrete.params.json");
+      return programInfoPath.str().str();
+    }
+
+    /// Returns the path of the compiler feedback
+    std::string getCompilationFeedbackPath(std::string outputDirPath) {
+      llvm::SmallString<0> compilationFeedbackPath(outputDirPath);
+      llvm::sys::path::append(compilationFeedbackPath, "compilation_feedback.json");
+      return compilationFeedbackPath.str().str();
+    }
+}
+
 namespace mlir {
 namespace concretelang {
 
@@ -787,37 +817,7 @@ CompilerEngine::compile(mlir::ModuleOp module, std::string outputDirPath,
       generateStaticLib, generateClientParameters, generateCompilationFeedback);
 }
 
-/// Returns the path of the shared library
-std::string
-CompilerEngine::Library::getSharedLibraryPath(std::string outputDirPath) {
-  llvm::SmallString<0> sharedLibraryPath(outputDirPath);
-  llvm::sys::path::append(sharedLibraryPath, "sharedlib" + DOT_SHARED_LIB_EXT);
-  return sharedLibraryPath.str().str();
-}
 
-/// Returns the path of the static library
-std::string
-CompilerEngine::Library::getStaticLibraryPath(std::string outputDirPath) {
-  llvm::SmallString<0> staticLibraryPath(outputDirPath);
-  llvm::sys::path::append(staticLibraryPath, "staticlib" + DOT_STATIC_LIB_EXT);
-  return staticLibraryPath.str().str();
-}
-
-/// Returns the path of the client parameter
-std::string
-CompilerEngine::Library::getProgramInfoPath(std::string outputDirPath) {
-  llvm::SmallString<0> programInfoPath(outputDirPath);
-  llvm::sys::path::append(programInfoPath, "program_info.concrete.params.json");
-  return programInfoPath.str().str();
-}
-
-/// Returns the path of the compiler feedback
-std::string
-CompilerEngine::Library::getCompilationFeedbackPath(std::string outputDirPath) {
-  llvm::SmallString<0> compilationFeedbackPath(outputDirPath);
-  llvm::sys::path::append(compilationFeedbackPath, "compilation_feedback.json");
-  return compilationFeedbackPath.str().str();
-}
 
 const std::string CompilerEngine::Library::OBJECT_EXT = ".o";
 const std::string CompilerEngine::Library::LINKER = "ld";
@@ -853,8 +853,28 @@ const std::string &CompilerEngine::Library::getOutputDirPath() const {
   return outputDirPath;
 }
 
+/// Returns the path of the shared library
+std::string CompilerEngine::Library::getSharedLibraryPath() const{
+    return ::getSharedLibraryPath(getOutputDirPath());
+}
+
+/// Returns the path of the static library
+std::string CompilerEngine::Library::getStaticLibraryPath() const{
+    return ::getStaticLibraryPath(getOutputDirPath());
+};
+
+/// Returns the path of the program info
+std::string CompilerEngine::Library::getProgramInfoPath() const{
+    return ::getProgramInfoPath(getOutputDirPath());
+};
+
+/// Returns the path of the compilation feedback
+std::string CompilerEngine::Library::getCompilationFeedbackPath() const{
+    return ::getCompilationFeedbackPath(getOutputDirPath());
+};
+
 llvm::Expected<std::string> CompilerEngine::Library::emitProgramInfoJSON() {
-  auto programInfoPath = getProgramInfoPath(outputDirPath);
+  auto programInfoPath = ::getProgramInfoPath(outputDirPath);
   std::error_code error;
   llvm::raw_fd_ostream out(programInfoPath, error);
   auto maybeJson = programInfo.writeJsonToString();
@@ -870,7 +890,7 @@ llvm::Expected<std::string> CompilerEngine::Library::emitProgramInfoJSON() {
 
 llvm::Expected<std::string>
 CompilerEngine::Library::emitCompilationFeedbackJSON() {
-  auto path = getCompilationFeedbackPath(outputDirPath);
+  auto path = ::getCompilationFeedbackPath(outputDirPath);
   llvm::json::Value value(compilationFeedback);
   std::error_code error;
   llvm::raw_fd_ostream out(path, error);
@@ -993,7 +1013,7 @@ llvm::Expected<std::string> CompilerEngine::Library::emitShared() {
     }
 #endif
   }
-  auto path = emit(getSharedLibraryPath(outputDirPath), DOT_SHARED_LIB_EXT,
+  auto path = emit(::getSharedLibraryPath(outputDirPath), DOT_SHARED_LIB_EXT,
                    LINKER + LINKER_SHARED_OPT, extraArgs);
   if (path) {
     sharedLibraryPath = path.get();
@@ -1024,7 +1044,7 @@ llvm::Expected<std::string> CompilerEngine::Library::emitShared() {
 }
 
 llvm::Expected<std::string> CompilerEngine::Library::emitStatic() {
-  auto path = emit(getStaticLibraryPath(outputDirPath), DOT_STATIC_LIB_EXT,
+  auto path = emit(::getStaticLibraryPath(outputDirPath), DOT_STATIC_LIB_EXT,
                    AR + AR_STATIC_OPT);
   if (path) {
     staticLibraryPath = path.get();
