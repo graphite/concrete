@@ -600,6 +600,19 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
       .def_readonly(
           "circuit_feedbacks",
           &mlir::concretelang::ProgramCompilationFeedback::circuitFeedbacks)
+      .def(
+          "get_circuit_feedback",
+          [](mlir::concretelang::ProgramCompilationFeedback &feedback,
+             std::string function) {
+            for (auto circuit : feedback.circuitFeedbacks) {
+              if (circuit.name == function) {
+                return circuit;
+              }
+            }
+            throw std::runtime_error(
+                "Circuit feedback not found fo passed function.");
+          },
+          "Return the circuit feedback for `function`.", arg("function"))
       .doc() = "Compilation feedback for a whole program.";
 
   pybind11::class_<mlir::concretelang::CompilationContext,
@@ -622,11 +635,12 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
   struct LweSecretKeyParam {
     Message<concreteprotocol::LweSecretKeyInfo> info;
 
-    std::string toString(){
-        std::string output = "LweSecretKeyParam(dimension=";
-        output.append(std::to_string(info.asReader().getParams().getLweDimension()));
-        output.append(")");
-        return output;
+    std::string toString() {
+      std::string output = "LweSecretKeyParam(dimension=";
+      output.append(
+          std::to_string(info.asReader().getParams().getLweDimension()));
+      output.append(")");
+      return output;
     }
   };
   pybind11::class_<LweSecretKeyParam>(m, "LweSecretKeyParam")
@@ -636,15 +650,12 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
             return key.info.asReader().getParams().getLweDimension();
           },
           "Return the associated LWE dimension.")
-      .def("__str__", [](LweSecretKeyParam &key){
-          return key.toString();
-      })
-      .def("__repr__", [](LweSecretKeyParam &key){
-          return key.toString();
-      })
-      .def("__hash__", [](pybind11::object key){
-          return pybind11::hash(pybind11::repr(key));
-      })
+      .def("__str__", [](LweSecretKeyParam &key) { return key.toString(); })
+      .def("__repr__", [](LweSecretKeyParam &key) { return key.toString(); })
+      .def("__hash__",
+           [](pybind11::object key) {
+             return pybind11::hash(pybind11::repr(key));
+           })
       .doc() = "Parameters of an LWE Secret Key.";
 
   // ------------------------------------------------------------------------------//
@@ -654,22 +665,26 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
   struct BootstrapKeyParam {
     Message<concreteprotocol::LweBootstrapKeyInfo> info;
 
-    std::string toString(){
-        std::string output = "BootstrapKeyParam(";
-        output.append("polynomial_size=");
-        output.append(std::to_string(info.asReader().getParams().getPolynomialSize()));
-        output.append(", glwe_dimension=");
-        output.append(std::to_string(info.asReader().getParams().getGlweDimension()));
-        output.append(", input_lwe_dimension=");
-        output.append(std::to_string(info.asReader().getParams().getInputLweDimension()));
-        output.append(", level=");
-        output.append(std::to_string(info.asReader().getParams().getLevelCount()));
-        output.append(", base_log=");
-        output.append(std::to_string(info.asReader().getParams().getBaseLog()));
-        output.append(", variance=");
-        output.append(std::to_string(info.asReader().getParams().getVariance()));
-        output.append(")");
-        return output;
+    std::string toString() {
+      std::string output = "BootstrapKeyParam(";
+      output.append("polynomial_size=");
+      output.append(
+          std::to_string(info.asReader().getParams().getPolynomialSize()));
+      output.append(", glwe_dimension=");
+      output.append(
+          std::to_string(info.asReader().getParams().getGlweDimension()));
+      output.append(", input_lwe_dimension=");
+      output.append(
+          std::to_string(info.asReader().getParams().getInputLweDimension()));
+      output.append(", level=");
+      output.append(
+          std::to_string(info.asReader().getParams().getLevelCount()));
+      output.append(", base_log=");
+      output.append(std::to_string(info.asReader().getParams().getBaseLog()));
+      output.append(", variance=");
+      output.append(std::to_string(info.asReader().getParams().getVariance()));
+      output.append(")");
+      return output;
     }
   };
   pybind11::class_<BootstrapKeyParam>(m, "BootstrapKeyParam")
@@ -721,15 +736,12 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
             return key.info.asReader().getParams().getInputLweDimension();
           },
           "Return the associated input lwe dimension.")
-      .def("__str__", [](BootstrapKeyParam &key){
-          return key.toString();
-      })
-      .def("__repr__", [](BootstrapKeyParam &key){
-          return key.toString();
-      })
-      .def("__hash__", [](pybind11::object key){
-          return pybind11::hash(pybind11::repr(key));
-      })
+      .def("__str__", [](BootstrapKeyParam &key) { return key.toString(); })
+      .def("__repr__", [](BootstrapKeyParam &key) { return key.toString(); })
+      .def("__hash__",
+           [](pybind11::object key) {
+             return pybind11::hash(pybind11::repr(key));
+           })
       .doc() = "Parameters of a Bootstrap key.";
 
   // ------------------------------------------------------------------------------//
@@ -739,16 +751,17 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
   struct KeyswitchKeyParam {
     Message<concreteprotocol::LweKeyswitchKeyInfo> info;
 
-    std::string toString(){
-        std::string output = "KeyswitchKeyParam(";
-        output.append("level=");
-        output.append(std::to_string(info.asReader().getParams().getLevelCount()));
-        output.append(", base_log=");
-        output.append(std::to_string(info.asReader().getParams().getBaseLog()));
-        output.append(", variance=");
-        output.append(std::to_string(info.asReader().getParams().getVariance()));
-        output.append(")");
-        return output;
+    std::string toString() {
+      std::string output = "KeyswitchKeyParam(";
+      output.append("level=");
+      output.append(
+          std::to_string(info.asReader().getParams().getLevelCount()));
+      output.append(", base_log=");
+      output.append(std::to_string(info.asReader().getParams().getBaseLog()));
+      output.append(", variance=");
+      output.append(std::to_string(info.asReader().getParams().getVariance()));
+      output.append(")");
+      return output;
     }
   };
   pybind11::class_<KeyswitchKeyParam>(m, "KeyswitchKeyParam")
@@ -782,15 +795,12 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
             return key.info.asReader().getParams().getVariance();
           },
           "Return the associated noise variance.")
-      .def("__str__", [](KeyswitchKeyParam &key){
-          return key.toString();
-      })
-      .def("__repr__", [](KeyswitchKeyParam &key){
-          return key.toString();
-      })
-      .def("__hash__", [](pybind11::object key){
-          return pybind11::hash(pybind11::repr(key));
-      })
+      .def("__str__", [](KeyswitchKeyParam &key) { return key.toString(); })
+      .def("__repr__", [](KeyswitchKeyParam &key) { return key.toString(); })
+      .def("__hash__",
+           [](pybind11::object key) {
+             return pybind11::hash(pybind11::repr(key));
+           })
       .doc() = "Parameters of a keyswitch key.";
 
   // ------------------------------------------------------------------------------//
@@ -800,22 +810,26 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
   struct PackingKeyswitchKeyParam {
     Message<concreteprotocol::PackingKeyswitchKeyInfo> info;
 
-    std::string toString(){
-        std::string output = "PackingKeyswitchKeyParam(";
-        output.append("polynomial_size=");
-        output.append(std::to_string(info.asReader().getParams().getPolynomialSize()));
-        output.append(", glwe_dimension=");
-        output.append(std::to_string(info.asReader().getParams().getGlweDimension()));
-        output.append(", input_lwe_dimension=");
-        output.append(std::to_string(info.asReader().getParams().getInputLweDimension()));
-        output.append(", level=");
-        output.append(std::to_string(info.asReader().getParams().getLevelCount()));
-        output.append(", base_log=");
-        output.append(std::to_string(info.asReader().getParams().getBaseLog()));
-        output.append(", variance=");
-        output.append(std::to_string(info.asReader().getParams().getVariance()));
-        output.append(")");
-        return output;
+    std::string toString() {
+      std::string output = "PackingKeyswitchKeyParam(";
+      output.append("polynomial_size=");
+      output.append(
+          std::to_string(info.asReader().getParams().getPolynomialSize()));
+      output.append(", glwe_dimension=");
+      output.append(
+          std::to_string(info.asReader().getParams().getGlweDimension()));
+      output.append(", input_lwe_dimension=");
+      output.append(
+          std::to_string(info.asReader().getParams().getInputLweDimension()));
+      output.append(", level=");
+      output.append(
+          std::to_string(info.asReader().getParams().getLevelCount()));
+      output.append(", base_log=");
+      output.append(std::to_string(info.asReader().getParams().getBaseLog()));
+      output.append(", variance=");
+      output.append(std::to_string(info.asReader().getParams().getVariance()));
+      output.append(")");
+      return output;
     }
   };
   pybind11::class_<PackingKeyswitchKeyParam>(m, "PackingKeyswitchKeyParam")
@@ -867,16 +881,103 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
             return key.info.asReader().getParams().getVariance();
           },
           "Return the associated noise variance.")
-      .def("__str__", [](PackingKeyswitchKeyParam &key){
-          return key.toString();
-      })
-      .def("__repr__", [](PackingKeyswitchKeyParam &key){
-          return key.toString();
-      })
-      .def("__hash__", [](pybind11::object key){
-          return pybind11::hash(pybind11::repr(key));
-      })
+      .def("__str__",
+           [](PackingKeyswitchKeyParam &key) { return key.toString(); })
+      .def("__repr__",
+           [](PackingKeyswitchKeyParam &key) { return key.toString(); })
+      .def("__hash__",
+           [](pybind11::object key) {
+             return pybind11::hash(pybind11::repr(key));
+           })
       .doc() = "Parameters of a packing keyswitch key.";
+
+  // ------------------------------------------------------------------------------//
+  // TYPE INFO //
+  // ------------------------------------------------------------------------------//
+  typedef Message<concreteprotocol::TypeInfo> TypeInfo;
+  pybind11::class_<TypeInfo>(m, "TypeInfo")
+      .def(
+          "is_plaintext",
+          [](TypeInfo &type) { return type.asReader().hasPlaintext(); },
+          "Return true if the type is plaintext")
+      .doc() = "Informations describing the type of a gate.";
+
+  // ------------------------------------------------------------------------------//
+  // RAW INFO //
+  // ------------------------------------------------------------------------------//
+  typedef Message<concreteprotocol::RawInfo> RawInfo;
+  pybind11::class_<RawInfo>(m, "RawInfo")
+      .def(
+          "get_shape",
+          [](RawInfo &raw) {
+            auto output = std::vector<int64_t>();
+            for (auto dim : raw.asReader().getShape().getDimensions()) {
+              output.push_back({dim});
+            }
+            return output;
+          },
+          "Return the shape associated to the raw info.")
+      .def(
+          "get_integer_precision",
+          [](RawInfo &raw) { return raw.asReader().getIntegerPrecision(); },
+          "Return the integer precision associated to the raw info.")
+      .def(
+          "get_signedness",
+          [](RawInfo &raw) { return raw.asReader().getIsSigned(); },
+          "Return the signedness associated to the raw info.")
+      .doc() = "Informations describing a raw type of gate.";
+
+  // ------------------------------------------------------------------------------//
+  // GATE INFO //
+  // ------------------------------------------------------------------------------//
+  typedef Message<concreteprotocol::GateInfo> GateInfo;
+  pybind11::class_<GateInfo>(m, "GateInfo")
+      .def(
+          "get_type_info",
+          [](GateInfo &gate) -> TypeInfo {
+            return {gate.asReader().getTypeInfo()};
+          },
+          "Return the type associated to the gate.")
+      .def(
+          "get_raw_info",
+          [](GateInfo &gate) -> RawInfo {
+            return {gate.asReader().getRawInfo()};
+          },
+          "Return the raw type associated to the gate.")
+      .doc() = "Informations describing a circuit gate (input or output).";
+
+  // ------------------------------------------------------------------------------//
+  // CIRCUIT INFO //
+  // ------------------------------------------------------------------------------//
+  typedef Message<concreteprotocol::CircuitInfo> CircuitInfo;
+  pybind11::class_<CircuitInfo>(m, "CircuitInfo")
+      .def(
+          "get_name",
+          [](CircuitInfo &circuit) {
+            return circuit.asReader().getName().cStr();
+          },
+          "Return the name of the circuit")
+      .def(
+          "get_inputs",
+          [](CircuitInfo &circuit) -> std::vector<GateInfo> {
+            auto output = std::vector<GateInfo>();
+            for (auto gate : circuit.asReader().getInputs()) {
+              output.push_back({gate});
+            }
+            return output;
+          },
+          "Return the input gates")
+      .def(
+          "get_outputs",
+          [](CircuitInfo &circuit) -> std::vector<GateInfo> {
+            auto output = std::vector<GateInfo>();
+            for (auto gate : circuit.asReader().getOutputs()) {
+              output.push_back({gate});
+            }
+            return output;
+          },
+          "Return the output gates")
+      .doc() = "Informations describing a compiled circuit.";
 
   // ------------------------------------------------------------------------------//
   // PROGRAM INFO //
@@ -1074,6 +1175,17 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
           },
           "Return the parameters of the packing keyswitch keys for this "
           "program.")
+      .def(
+          "get_circuits",
+          [](ProgramInfo &programInfo) {
+            auto output = std::vector<CircuitInfo>();
+            for (auto circuit :
+                 programInfo.programInfo.asReader().getCircuits()) {
+              output.push_back(circuit);
+            }
+            return output;
+          },
+          "Return the circuits associated to the program.")
       .doc() = "Informations describing a compiled program.";
 
   // ------------------------------------------------------------------------------//
@@ -1468,9 +1580,11 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
           "Return the inner value as a python type.")
       .doc() = "Private / Runtime value.";
 
-  // // ------------------------------------------------------------------------------//
+  // //
+  // ------------------------------------------------------------------------------//
   // // PUBLIC ARGUMENTS //
-  // // ------------------------------------------------------------------------------//
+  // //
+  // ------------------------------------------------------------------------------//
 
   // struct PublicArguments {
   //   std::vector<TransportValue> values;
@@ -1506,14 +1620,17 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
   //               [](PublicArguments &publicArguments) {
   //                 auto publicArgumentsProto =
   //                     Message<concreteprotocol::PublicArguments>();
-  //                 auto argBuilder = publicArgumentsProto.asBuilder().initArgs(
+  //                 auto argBuilder =
+  //                 publicArgumentsProto.asBuilder().initArgs(
   //                     publicArguments.values.size());
-  //                 for (size_t i = 0; i < publicArguments.values.size(); i++) {
+  //                 for (size_t i = 0; i < publicArguments.values.size(); i++)
+  //                 {
   //                   argBuilder.setWithCaveats(
   //                       i, publicArguments.values[i].asReader());
   //                 }
-  //                 auto maybeBuffer = publicArgumentsProto.writeBinaryToString();
-  //                 if (maybeBuffer.has_failure()) {
+  //                 auto maybeBuffer =
+  //                 publicArgumentsProto.writeBinaryToString(); if
+  //                 (maybeBuffer.has_failure()) {
   //                   throw std::runtime_error(
   //                       "Failed to serialize public arguments.");
   //                 }
@@ -1525,9 +1642,11 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
   //     .doc() = "Public arguments to be sent from the client to the server "
   //              "before execution.";
 
-  // // ------------------------------------------------------------------------------//
+  // //
+  // ------------------------------------------------------------------------------//
   // // PUBLIC RESULT //
-  // // ------------------------------------------------------------------------------//
+  // //
+  // ------------------------------------------------------------------------------//
   // struct PublicResults {
   //   std::vector<TransportValue> values;
   // };
@@ -1537,8 +1656,10 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
   //         [](const pybind11::bytes &buffer) {
   //           auto publicResultsProto =
   //               Message<concreteprotocol::PublicResults>();
-  //           if (publicResultsProto.readBinaryFromString(buffer).has_failure()) {
-  //             throw std::runtime_error("Failed to deserialize public results.");
+  //           if
+  //           (publicResultsProto.readBinaryFromString(buffer).has_failure()) {
+  //             throw std::runtime_error("Failed to deserialize public
+  //             results.");
   //           }
   //           std::vector<TransportValue> values;
   //           for (auto res : publicResultsProto.asReader().getResults()) {
@@ -1558,11 +1679,13 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
   //             auto resBuilder = publicResultsProto.asBuilder().initResults(
   //                 publicResult.values.size());
   //             for (size_t i = 0; i < publicResult.values.size(); i++) {
-  //               resBuilder.setWithCaveats(i, publicResult.values[i].asReader());
+  //               resBuilder.setWithCaveats(i,
+  //               publicResult.values[i].asReader());
   //             }
   //             auto maybeBuffer = publicResultsProto.writeBinaryToString();
   //             if (maybeBuffer.has_failure()) {
-  //               throw std::runtime_error("Failed to serialize public results.");
+  //               throw std::runtime_error("Failed to serialize public
+  //               results.");
   //             }
   //             return maybeBuffer.value();
   //           };
@@ -1584,7 +1707,8 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
   //           return publicResult.values[position];
   //         },
   //         "Get the `n`-th value from the results", arg("n"))
-  //     .doc() = "Public results to be sent from the server to the client after "
+  //     .doc() = "Public results to be sent from the server to the client after
+  //     "
   //              "execution.";
 
   // ------------------------------------------------------------------------------//

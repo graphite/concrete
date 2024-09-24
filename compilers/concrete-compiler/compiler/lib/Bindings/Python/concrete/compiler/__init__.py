@@ -7,6 +7,7 @@ from typing import Union
 
 # pylint: disable=no-name-in-module,import-error
 from mlir._mlir_libs._concretelang._compiler import (
+    ProgramCompilationFeedback,
     terminate_df_parallelization as _terminate_df_parallelization,
     init_df_parallelization as _init_df_parallelization,
     check_gpu_runtime_enabled as _check_gpu_runtime_enabled,
@@ -21,36 +22,39 @@ from mlir._mlir_libs._concretelang._compiler import (
     KeyswitchKeyParam,
     PackingKeyswitchKeyParam,
     ProgramInfo,
-    ProgramCompilationFeedback,
-    CircuitCompilationFeedback,
     CompilationOptions,
     CompilationContext,
     KeysetCache,
     ServerKeyset,
-    Library,
     Keyset,
     Compiler,
     TransportValue,
     Value,
-    PublicArguments,
-    PublicResults,
     ServerProgram,
     ServerCircuit,
     ClientProgram,
-    ClientCircuit
+    ClientCircuit,
+    Backend,
+    KeyType,
+    OptimizerMultiParameterStrategy,
+    OptimizerStrategy,
+    PrimitiveOperation,
+    Library
 )
 
 # pylint: enable=no-name-in-module,import-error
 
 from .compilation_options import Encoding
 from .utils import lookup_runtime_lib
+from .compilation_feedback import MoreCircuitCompilationFeedback
 
 from .tfhers_int import (
     TfhersExporter,
     TfhersFheIntDescription,
 )
 
-type Parameter = Union[LweSecretKeyParam, BootstrapKeyParam, KeyswitchKeyParam, PackingKeyswitchKeyParam]
+Parameter = Union[LweSecretKeyParam, BootstrapKeyParam, KeyswitchKeyParam, PackingKeyswitchKeyParam]
+
 
 def init_dfr():
     """Initialize dataflow parallelization.

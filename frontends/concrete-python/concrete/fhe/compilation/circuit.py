@@ -17,7 +17,7 @@ from .keys import Keys
 from .module import FheFunction, FheModule
 from .server import Server
 
-from concrete.compiler import TransportValue, Parameter
+from concrete.compiler import TransportValue, Parameter, CompilationContext
 
 # pylint: enable=import-error,no-member,no-name-in-module
 
@@ -112,7 +112,7 @@ class Circuit:
         return self._function.simulate(*args)
 
     @property
-    def keys(self) -> Keys:
+    def keys(self) -> Optional[Keys]:
         """
         Get the keys of the circuit.
         """
@@ -277,7 +277,7 @@ class Circuit:
         return self._module.complexity  # pragma: no cover
 
     @property
-    def memory_usage_per_location(self) -> Dict[str, int]:
+    def memory_usage_per_location(self) -> Dict[str, Optional[int]]:
         """
         Get the memory usage of operations in the circuit per location.
         """

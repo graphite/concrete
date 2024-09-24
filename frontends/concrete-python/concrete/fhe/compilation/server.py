@@ -18,20 +18,24 @@ from concrete.compiler import (
     CompilationContext,
     CompilationOptions,
     ProgramCompilationFeedback,
-    PublicArguments,
+    MoreCircuitCompilationFeedback,
     ServerProgram,
     Compiler,
     set_compiler_logging,
     set_llvm_debug_flag,
-    lookup_runtime_lib
-)
-from mlir._mlir_libs._concretelang._compiler import (
+    lookup_runtime_lib,
     Backend,
     KeyType,
     OptimizerMultiParameterStrategy,
     OptimizerStrategy,
     PrimitiveOperation,
+    Library,
+    TransportValue,
+    Parameter,
+    ProgramInfo
 )
+
+from concrete.compiler import server_program
 from mlir.ir import Module as MlirModule
 
 from ..internal.utils import assert_that
@@ -45,7 +49,7 @@ from .configuration import (
     ParameterSelectionStrategy,
 )
 from .specs import ClientSpecs
-from .utils import friendly_type_format
+from .utils import friendly_type_format, Lazy
 
 # pylint: enable=import-error,no-member,no-name-in-module
 
@@ -56,8 +60,7 @@ class Server:
     """
 
     is_simulated: bool
-
-    _compiler: Compiler
+    _library: Library
     _mlir: Optional[str]
     _configuration: Optional[Configuration]
     _composition_rules: Optional[List[CompositionRule]]
@@ -66,39 +69,34 @@ class Server:
 
     def __init__(
         self,
-        output_dir: Union[None, str, Path],
-        compiler: Compiler,
-        server_program: ServerProgram,
+        library: Library,
         is_simulated: bool,
         composition_rules: Optional[List[CompositionRule]],
     ):
         self.is_simulated = is_simulated
-
-        self._compiler = compiler
-        self._server_program = server_program
+        self._library = library
         self._mlir = None
         self._composition_rules = composition_rules
-
         self._clear_input_indices = {}
         self._clear_input_shapes = {}
 
-        functions_parameters = json.loads(compiler.get_program_info().serialize())["circuits"]
-        for function_parameters in functions_parameters:
-            name = function_parameters["name"]
+        circuit_infos = library.get_program_info().get_circuits()
+        for circuit in circuit_infos:
+            name = circuit.get_name()
             self._clear_input_indices[name] = {
                 index
-                for index, input_spec in enumerate(function_parameters["inputs"])
-                if "plaintext" in input_spec["typeInfo"]
+                for index, gate_info in enumerate(circuit.get_inputs())
+                if gate_info.get_type_info().is_plaintext()
             }
             self._clear_input_shapes[name] = {
-                index: tuple(input_spec["rawInfo"]["shape"]["dimensions"])
-                for index, input_spec in enumerate(function_parameters["inputs"])
-                if "plaintext" in input_spec["typeInfo"]
+                index: tuple(gate_info.get_raw_info().get_shape())
+                for index, gate_info in enumerate(circuit.get_inputs())
+                if gate_info.get_type_info().is_plaintext()
             }
 
     @property
     def client_specs(self) -> ClientSpecs:
-        return ClientSpecs(self._compiler.get_program_info())
+        return ClientSpecs(self._library.get_program_info())
 
     @staticmethod
     def create(
@@ -129,10 +127,8 @@ class Server:
         """
 
         backend = Backend.GPU if configuration.use_gpu else Backend.CPU
-        options = CompilationOptions.new(backend)
-
+        options = CompilationOptions(backend)
         options.simulation(is_simulated)
-
         options.set_loop_parallelize(configuration.loop_parallelize)
         options.set_dataflow_parallelize(configuration.dataflow_parallelize)
         options.set_auto_parallelize(configuration.auto_parallelize)
@@ -141,7 +137,6 @@ class Server:
         options.set_enable_overflow_detection_in_simulation(
             configuration.detect_overflow_in_simulation
         )
-
         options.set_composable(configuration.composable)
         composition_rules = list(composition_rules) if composition_rules else []
         for rule in composition_rules:
@@ -218,29 +213,22 @@ class Server:
                 str(output_dir_path), lookup_runtime_lib()
             )
             if isinstance(mlir, str):
-                feeback = compiler.compile(mlir, options)
+                library = compiler.compile(mlir, options)
             else:  # MlirModule
                 assert (
                     compilation_context is not None
                 ), "must provide compilation context when compiling MlirModule"
-                compilation_result = support.compile(mlir, options, compilation_context)
-            server_program = ServerProgram.load(support, is_simulated)
+                library = compiler.compile(mlir, options, compilation_context)
         finally:
             set_llvm_debug_flag(False)
             set_compiler_logging(False)
 
-        client_parameters = support.load_client_parameters(compilation_result)
-        client_specs = ClientSpecs(client_parameters)
         composition_rules = composition_rules if composition_rules else None
 
         result = Server(
-            client_specs,
-            output_dir,
-            support,
-            compilation_result,
-            server_program,
-            is_simulated,
-            composition_rules,
+            library=library,
+            is_simulated=is_simulated,
+            composition_rules=composition_rules
         )
 
         # pylint: disable=protected-access
@@ -382,15 +370,15 @@ class Server:
 
     def run(
         self,
-        *args: Optional[Union[Value, Tuple[Optional[Value], ...]]],
+        *args: Union[TransportValue, Tuple[TransportValue, ...]],
         evaluation_keys: Optional[EvaluationKeys] = None,
         function_name: Optional[str] = None,
-    ) -> Union[Value, Tuple[Value, ...]]:
+    ) -> Union[TransportValue, Tuple[TransportValue, ...]]:
         """
         Evaluate.
 
         Args:
-            *args (Optional[Union[Value, Tuple[Optional[Value], ...]]]):
+            *args (Optional[Union[TransportValue, Tuple[Optional[TransportValue], ...]]]):
                 argument(s) for evaluation
 
             evaluation_keys (Optional[EvaluationKeys], default = None):
@@ -400,16 +388,16 @@ class Server:
                 The name of the function to run
 
         Returns:
-            Union[Value, Tuple[Value, ...]]:
+            Union[Value, Tuple[TransportValue, ...]]:
                 result(s) of evaluation
         """
 
         if function_name is None:
-            functions = self.client_specs.client_parameters.function_list()
-            if len(functions) == 1:
-                function_name = functions[0]
+            circuits = self.program_info.get_circuits()
+            if len(circuits) == 1:
+                function_name = circuits[0].get_name()
             else:  # pragma: no cover
-                msg = "The client contains more than one functions. \
+                msg = "The server contains more than one functions. \
 Provide a `function_name` keyword argument to disambiguate."
                 raise TypeError(msg)
 
@@ -417,48 +405,14 @@ Provide a `function_name` keyword argument to disambiguate."
             message = "Expected evaluation keys to be provided when not in simulation mode"
             raise RuntimeError(message)
 
-        flattened_args: List[Optional[Value]] = []
+        flattened_args: List[TransportValue] = []
         for arg in args:
             if isinstance(arg, tuple):
                 flattened_args.extend(arg)
             else:
                 flattened_args.append(arg)
 
-        buffers = []
-        for i, arg in enumerate(flattened_args):
-            if arg is None:
-                message = f"Expected argument {i} to be an fhe.Value but it's None"
-                raise ValueError(message)
-
-            if not isinstance(arg, Value):
-                if i not in self._clear_input_indices[function_name]:
-                    message = (
-                        f"Expected argument {i} to be an fhe.Value "
-                        f"but it's {friendly_type_format(type(arg))}"
-                    )
-                    raise ValueError(message)
-
-                # Simulated value exporter can be used here
-                # as "clear" fhe.Values have the same
-                # internal representation as "simulation" fhe.Values
-
-                exporter = SimulatedValueExporter.new(
-                    self.client_specs.program_info,
-                    function_name,
-                )
-
-                if isinstance(arg, (int, np.integer)):
-                    arg = exporter.export_scalar(i, arg)
-                else:
-                    arg = np.array(arg)
-                    arg = exporter.export_tensor(i, arg.flatten().tolist(), arg.shape)
-
-            if isinstance(arg, Value):
-                buffers.append(arg.inner)
-            else:
-                buffers.append(arg)
-
-        public_args = PublicArguments.new(self.client_specs.program_info, buffers)
+        server_program = self.
         server_circuit = self._server_program.get_server_circuit(function_name)
 
         if self.is_simulated:
@@ -478,64 +432,71 @@ Provide a `function_name` keyword argument to disambiguate."
             shutil.rmtree(Path(self._output_dir).resolve())
 
     @property
+    def program_info(self) -> ProgramInfo:
+        """
+        The program info associated with the server.
+        """
+        return self._library.get_program_info
+
+    @property
     def size_of_secret_keys(self) -> int:
         """
         Get size of the secret keys of the compiled program.
         """
-        return self._compilation_feedback.total_secret_keys_size
+        return self._library.get_program_compilation_feedback().total_secret_keys_size
 
     @property
     def size_of_bootstrap_keys(self) -> int:
         """
         Get size of the bootstrap keys of the compiled program.
         """
-        return self._compilation_feedback.total_bootstrap_keys_size
+        return self._library.get_program_compilation_feedback().total_bootstrap_keys_size
 
     @property
     def size_of_keyswitch_keys(self) -> int:
         """
         Get size of the key switch keys of the compiled program.
         """
-        return self._compilation_feedback.total_keyswitch_keys_size
+        return self._library.get_program_compilation_feedback().total_keyswitch_keys_size
 
     @property
-    def p_error(self) -> int:
+    def p_error(self) -> float:
         """
         Get the probability of error for each simple TLU (on a scalar).
         """
-        return self._compilation_feedback.p_error
+        return self._library.get_program_compilation_feedback().p_error
 
     @property
-    def global_p_error(self) -> int:
+    def global_p_error(self) -> float:
         """
         Get the probability of having at least one simple TLU error during the entire execution.
         """
-        return self._compilation_feedback.global_p_error
+        return self._library.get_program_compilation_feedback().global_p_error
 
     @property
     def complexity(self) -> float:
         """
         Get complexity of the compiled program.
         """
-        return self._compilation_feedback.complexity
+        return self._library.get_program_compilation_feedback().complexity
 
-    def memory_usage_per_location(self, function: str) -> Dict[str, int]:
+    def memory_usage_per_location(self, function: str) -> Dict[str, Optional[int]]:
         """
         Get the memory usage of operations per location.
         """
-        return self._compilation_feedback.circuit(function).memory_usage_per_location
+        return self._library.get_program_compilation_feedback().get_circuit_feedback(function).memory_usage_per_location
 
     def size_of_inputs(self, function: str) -> int:
         """
         Get size of the inputs of the compiled program.
         """
-        return self._compilation_feedback.circuit(function).total_inputs_size
+        return self._library.get_program_compilation_feedback().get_circuit_feedback(function).total_inputs_size
 
     def size_of_outputs(self, function: str) -> int:
         """
         Get size of the outputs of the compiled program.
         """
-        return self._compilation_feedback.circuit(function).total_output_size
+        return self._library.get_program_compilation_feedback().get_circuit_feedback(function).total_output_size
 
     # Programmable Bootstrap Statistics
 
@@ -543,7 +504,7 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of programmable bootstraps in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count(
+        return MoreCircuitCompilationFeedback.count(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.PBS, PrimitiveOperation.WOP_PBS},
         )
 
@@ -551,17 +512,17 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of programmable bootstraps per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.PBS, PrimitiveOperation.WOP_PBS},
             key_types={KeyType.BOOTSTRAP},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info
         )
 
     def programmable_bootstrap_count_per_tag(self, function: str) -> Dict[str, int]:
         """
         Get the number of programmable bootstraps per tag in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag(
+        return MoreCircuitCompilationFeedback.count_per_tag(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.PBS, PrimitiveOperation.WOP_PBS},
         )
 
@@ -571,10 +532,10 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of programmable bootstraps per tag per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_tag_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.PBS, PrimitiveOperation.WOP_PBS},
             key_types={KeyType.BOOTSTRAP},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )
 
     # Key Switch Statistics
@@ -583,7 +544,7 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of key switches in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count(
+        return MoreCircuitCompilationFeedback.count(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.KEY_SWITCH, PrimitiveOperation.WOP_PBS},
         )
 
@@ -591,17 +552,17 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of key switches per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.KEY_SWITCH, PrimitiveOperation.WOP_PBS},
             key_types={KeyType.KEY_SWITCH},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )
 
     def key_switch_count_per_tag(self, function: str) -> Dict[str, int]:
         """
         Get the number of key switches per tag in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag(
+        return MoreCircuitCompilationFeedback.count_per_tag(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.KEY_SWITCH, PrimitiveOperation.WOP_PBS},
         )
 
@@ -611,10 +572,10 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of key switches per tag per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_tag_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.KEY_SWITCH, PrimitiveOperation.WOP_PBS},
             key_types={KeyType.KEY_SWITCH},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )
 
     # Packing Key Switch Statistics
@@ -623,7 +584,7 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of packing key switches in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count(
+        return MoreCircuitCompilationFeedback.count(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.WOP_PBS}
         )
 
@@ -631,17 +592,17 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of packing key switches per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.WOP_PBS},
             key_types={KeyType.PACKING_KEY_SWITCH},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )
 
     def packing_key_switch_count_per_tag(self, function: str) -> Dict[str, int]:
         """
         Get the number of packing key switches per tag in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag(
+        return MoreCircuitCompilationFeedback.count_per_tag(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.WOP_PBS}
         )
 
@@ -651,10 +612,10 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of packing key switches per tag per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_tag_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.WOP_PBS},
             key_types={KeyType.PACKING_KEY_SWITCH},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )
 
     # Clear Addition Statistics
@@ -663,7 +624,7 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of clear additions in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count(
+        return self._library.get_program_compilation_feedback().get_circuit_feedback(function).count(
             operations={PrimitiveOperation.CLEAR_ADDITION}
         )
 
@@ -671,17 +632,17 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of clear additions per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.CLEAR_ADDITION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )
 
     def clear_addition_count_per_tag(self, function: str) -> Dict[str, int]:
         """
         Get the number of clear additions per tag in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag(
+        return MoreCircuitCompilationFeedback.count_per_tag(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.CLEAR_ADDITION},
         )
 
@@ -691,10 +652,10 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of clear additions per tag per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_tag_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.CLEAR_ADDITION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )
 
     # Encrypted Addition Statistics
@@ -703,7 +664,7 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of encrypted additions in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count(
+        return MoreCircuitCompilationFeedback.count(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.ENCRYPTED_ADDITION}
         )
 
@@ -711,17 +672,17 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of encrypted additions per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.ENCRYPTED_ADDITION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )
 
     def encrypted_addition_count_per_tag(self, function: str) -> Dict[str, int]:
         """
         Get the number of encrypted additions per tag in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag(
+        return MoreCircuitCompilationFeedback.count_per_tag(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.ENCRYPTED_ADDITION},
         )
 
@@ -731,10 +692,10 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of encrypted additions per tag per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_tag_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.ENCRYPTED_ADDITION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )
 
     # Clear Multiplication Statistics
@@ -743,7 +704,7 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of clear multiplications in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count(
+        return MoreCircuitCompilationFeedback.count(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.CLEAR_MULTIPLICATION},
         )
 
@@ -751,17 +712,17 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of clear multiplications per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.CLEAR_MULTIPLICATION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )
 
     def clear_multiplication_count_per_tag(self, function: str) -> Dict[str, int]:
         """
         Get the number of clear multiplications per tag in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag(
+        return MoreCircuitCompilationFeedback.count_per_tag(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.CLEAR_MULTIPLICATION},
         )
 
@@ -771,10 +732,10 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of clear multiplications per tag per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_tag_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.CLEAR_MULTIPLICATION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )
 
     # Encrypted Negation Statistics
@@ -783,7 +744,7 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of encrypted negations in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count(
+        return MoreCircuitCompilationFeedback.count(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.ENCRYPTED_NEGATION}
         )
 
@@ -791,17 +752,17 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of encrypted negations per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.ENCRYPTED_NEGATION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )
 
     def encrypted_negation_count_per_tag(self, function: str) -> Dict[str, int]:
         """
         Get the number of encrypted negations per tag in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag(
+        return MoreCircuitCompilationFeedback.count_per_tag(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.ENCRYPTED_NEGATION},
         )
 
@@ -811,8 +772,8 @@ Provide a `function_name` keyword argument to disambiguate."
         """
         Get the number of encrypted negations per tag per parameter in the compiled program.
         """
-        return self._compilation_feedback.circuit(function).count_per_tag_per_parameter(
+        return MoreCircuitCompilationFeedback.count_per_tag_per_parameter(self._library.get_program_compilation_feedback().get_circuit_feedback(function),
             operations={PrimitiveOperation.ENCRYPTED_NEGATION},
             key_types={KeyType.SECRET},
-            client_parameters=self.client_specs.program_info,
+            program_info=self.program_info,
         )

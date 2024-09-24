@@ -48,7 +48,7 @@ class FunctionDef:
     def __init__(
         self,
         function: Callable,
-        parameter_encryption_statuses: Dict[str, Union[str, EncryptionStatus]],
+        parameter_encryption_statuses: Dict[str, EncryptionStatus],
     ):
         signature = inspect.signature(function)
 

@@ -65,7 +65,7 @@ class Compiler:
         compiler = Compiler(
             function,
             {
-                name: "encrypted" if value.is_encrypted else "clear"
+                name: EncryptionStatus.ENCRYPTED if value.is_encrypted else EncryptionStatus.CLEAR
                 for name, value in parameter_values.items()
             },
             composition=(
@@ -85,7 +85,7 @@ class Compiler:
     def __init__(
         self,
         function: Callable,
-        parameter_encryption_statuses: Dict[str, Union[str, EncryptionStatus]],
+        parameter_encryption_statuses: Dict[str, EncryptionStatus],
         composition: Optional[Union[NotComposable, AllComposable]] = None,
     ):
         if composition is None:

@@ -688,14 +688,14 @@ class FheModule:
         return self.execution_runtime.val.server.size_of_keyswitch_keys  # pragma: no cover
 
     @property
-    def p_error(self) -> int:
+    def p_error(self) -> float:
         """
         Get probability of error for each simple TLU (on a scalar).
         """
         return self.execution_runtime.val.server.p_error  # pragma: no cover
 
     @property
-    def global_p_error(self) -> int:
+    def global_p_error(self) -> float:
         """
         Get the probability of having at least one simple TLU error during the entire execution.
         """
