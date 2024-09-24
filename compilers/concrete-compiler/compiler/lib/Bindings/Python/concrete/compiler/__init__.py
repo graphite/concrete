@@ -3,6 +3,7 @@
 
 """Compiler submodule."""
 import atexit
+from typing import Union
 
 # pylint: disable=no-name-in-module,import-error
 from mlir._mlir_libs._concretelang._compiler import (
@@ -41,7 +42,6 @@ from mlir._mlir_libs._concretelang._compiler import (
 
 # pylint: enable=no-name-in-module,import-error
 
-
 from .compilation_options import Encoding
 from .utils import lookup_runtime_lib
 
@@ -50,6 +50,7 @@ from .tfhers_int import (
     TfhersFheIntDescription,
 )
 
+type Parameter = Union[LweSecretKeyParam, BootstrapKeyParam, KeyswitchKeyParam, PackingKeyswitchKeyParam]
 
 def init_dfr():
     """Initialize dataflow parallelization.

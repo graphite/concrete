@@ -621,17 +621,30 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
 
   struct LweSecretKeyParam {
     Message<concreteprotocol::LweSecretKeyInfo> info;
+
+    std::string toString(){
+        std::string output = "LweSecretKeyParam(dimension=";
+        output.append(std::to_string(info.asReader().getParams().getLweDimension()));
+        output.append(")");
+        return output;
+    }
   };
   pybind11::class_<LweSecretKeyParam>(m, "LweSecretKeyParam")
-      .def(init([]() -> LweSecretKeyParam {
-        throw std::runtime_error("Explicit construction forbidden.");
-      }))
       .def(
           "dimension",
           [](LweSecretKeyParam &key) {
             return key.info.asReader().getParams().getLweDimension();
           },
           "Return the associated LWE dimension.")
+      .def("__str__", [](LweSecretKeyParam &key){
+          return key.toString();
+      })
+      .def("__repr__", [](LweSecretKeyParam &key){
+          return key.toString();
+      })
+      .def("__hash__", [](pybind11::object key){
+          return pybind11::hash(pybind11::repr(key));
+      })
       .doc() = "Parameters of an LWE Secret Key.";
 
   // ------------------------------------------------------------------------------//
@@ -640,11 +653,26 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
 
   struct BootstrapKeyParam {
     Message<concreteprotocol::LweBootstrapKeyInfo> info;
+
+    std::string toString(){
+        std::string output = "BootstrapKeyParam(";
+        output.append("polynomial_size=");
+        output.append(std::to_string(info.asReader().getParams().getPolynomialSize()));
+        output.append(", glwe_dimension=");
+        output.append(std::to_string(info.asReader().getParams().getGlweDimension()));
+        output.append(", input_lwe_dimension=");
+        output.append(std::to_string(info.asReader().getParams().getInputLweDimension()));
+        output.append(", level=");
+        output.append(std::to_string(info.asReader().getParams().getLevelCount()));
+        output.append(", base_log=");
+        output.append(std::to_string(info.asReader().getParams().getBaseLog()));
+        output.append(", variance=");
+        output.append(std::to_string(info.asReader().getParams().getVariance()));
+        output.append(")");
+        return output;
+    }
   };
   pybind11::class_<BootstrapKeyParam>(m, "BootstrapKeyParam")
-      .def(init([]() -> BootstrapKeyParam {
-        throw std::runtime_error("Explicit construction forbidden.");
-      }))
       .def(
           "input_secret_key_id",
           [](BootstrapKeyParam &key) {
@@ -693,6 +721,15 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
             return key.info.asReader().getParams().getInputLweDimension();
           },
           "Return the associated input lwe dimension.")
+      .def("__str__", [](BootstrapKeyParam &key){
+          return key.toString();
+      })
+      .def("__repr__", [](BootstrapKeyParam &key){
+          return key.toString();
+      })
+      .def("__hash__", [](pybind11::object key){
+          return pybind11::hash(pybind11::repr(key));
+      })
       .doc() = "Parameters of a Bootstrap key.";
 
   // ------------------------------------------------------------------------------//
@@ -701,11 +738,20 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
 
   struct KeyswitchKeyParam {
     Message<concreteprotocol::LweKeyswitchKeyInfo> info;
+
+    std::string toString(){
+        std::string output = "KeyswitchKeyParam(";
+        output.append("level=");
+        output.append(std::to_string(info.asReader().getParams().getLevelCount()));
+        output.append(", base_log=");
+        output.append(std::to_string(info.asReader().getParams().getBaseLog()));
+        output.append(", variance=");
+        output.append(std::to_string(info.asReader().getParams().getVariance()));
+        output.append(")");
+        return output;
+    }
   };
   pybind11::class_<KeyswitchKeyParam>(m, "KeyswitchKeyParam")
-      .def(init([]() -> KeyswitchKeyParam {
-        throw std::runtime_error("Explicit construction forbidden.");
-      }))
       .def(
           "input_secret_key_id",
           [](KeyswitchKeyParam &key) {
@@ -736,6 +782,15 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
             return key.info.asReader().getParams().getVariance();
           },
           "Return the associated noise variance.")
+      .def("__str__", [](KeyswitchKeyParam &key){
+          return key.toString();
+      })
+      .def("__repr__", [](KeyswitchKeyParam &key){
+          return key.toString();
+      })
+      .def("__hash__", [](pybind11::object key){
+          return pybind11::hash(pybind11::repr(key));
+      })
       .doc() = "Parameters of a keyswitch key.";
 
   // ------------------------------------------------------------------------------//
@@ -744,11 +799,26 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
 
   struct PackingKeyswitchKeyParam {
     Message<concreteprotocol::PackingKeyswitchKeyInfo> info;
+
+    std::string toString(){
+        std::string output = "PackingKeyswitchKeyParam(";
+        output.append("polynomial_size=");
+        output.append(std::to_string(info.asReader().getParams().getPolynomialSize()));
+        output.append(", glwe_dimension=");
+        output.append(std::to_string(info.asReader().getParams().getGlweDimension()));
+        output.append(", input_lwe_dimension=");
+        output.append(std::to_string(info.asReader().getParams().getInputLweDimension()));
+        output.append(", level=");
+        output.append(std::to_string(info.asReader().getParams().getLevelCount()));
+        output.append(", base_log=");
+        output.append(std::to_string(info.asReader().getParams().getBaseLog()));
+        output.append(", variance=");
+        output.append(std::to_string(info.asReader().getParams().getVariance()));
+        output.append(")");
+        return output;
+    }
   };
   pybind11::class_<PackingKeyswitchKeyParam>(m, "PackingKeyswitchKeyParam")
-      .def(init([]() -> PackingKeyswitchKeyParam {
-        throw std::runtime_error("Explicit construction forbidden.");
-      }))
       .def(
           "input_secret_key_id",
           [](PackingKeyswitchKeyParam &key) {
@@ -797,6 +867,15 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
             return key.info.asReader().getParams().getVariance();
           },
           "Return the associated noise variance.")
+      .def("__str__", [](PackingKeyswitchKeyParam &key){
+          return key.toString();
+      })
+      .def("__repr__", [](PackingKeyswitchKeyParam &key){
+          return key.toString();
+      })
+      .def("__hash__", [](pybind11::object key){
+          return pybind11::hash(pybind11::repr(key));
+      })
       .doc() = "Parameters of a packing keyswitch key.";
 
   // ------------------------------------------------------------------------------//
@@ -848,9 +927,6 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
     }
   };
   pybind11::class_<ProgramInfo>(m, "ProgramInfo")
-      .def(init([]() -> ProgramInfo {
-        throw std::runtime_error("Explicit construction forbidden.");
-      }))
       .def_static(
           "deserialize",
           [](const pybind11::bytes &buffer) {
@@ -1012,9 +1088,6 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
   // SERVER KEYSET //
   // ------------------------------------------------------------------------------//
   pybind11::class_<ServerKeyset>(m, "ServerKeyset")
-      .def(init([]() -> ServerKeyset {
-        throw std::runtime_error("Explicit construction forbidden.");
-      }))
       .def_static(
           "deserialize",
           [](const pybind11::bytes &buffer) {
@@ -1393,216 +1466,132 @@ void mlir::concretelang::python::populateCompilerAPISubmodule(
             throw std::invalid_argument("Value has insupported scalar type.");
           },
           "Return the inner value as a python type.")
-      .def(
-          "is_tensor", [](Value &value) { return !value.isScalar(); },
-          "Return if the value is a tensor (as opposed to a scalar).")
-      .def(
-          "get_unsigned_tensor_data",
-          [](Value &value) {
-            if (auto tensor = value.getTensor<uint8_t>(); tensor) {
-              Tensor<uint64_t> out = (Tensor<uint64_t>)tensor.value();
-              return out.values;
-            } else if (auto tensor = value.getTensor<uint16_t>(); tensor) {
-              Tensor<uint64_t> out = (Tensor<uint64_t>)tensor.value();
-              return out.values;
-            } else if (auto tensor = value.getTensor<uint32_t>(); tensor) {
-              Tensor<uint64_t> out = (Tensor<uint64_t>)tensor.value();
-              return out.values;
-            } else if (auto tensor = value.getTensor<uint64_t>(); tensor) {
-              return tensor.value().values;
-            } else {
-              throw std::invalid_argument(
-                  "Value isn't a tensor or has an unsupported "
-                  "bitwidth");
-            }
-          },
-          "Return the data from a Value, assuming it is a tensor of unsigned "
-          "elements.")
-      .def(
-          "get_signed_tensor_data",
-          [](Value &value) {
-            if (auto tensor = value.getTensor<int8_t>(); tensor) {
-              Tensor<int64_t> out = (Tensor<int64_t>)tensor.value();
-              return out.values;
-            } else if (auto tensor = value.getTensor<int16_t>(); tensor) {
-              Tensor<int64_t> out = (Tensor<int64_t>)tensor.value();
-              return out.values;
-            } else if (auto tensor = value.getTensor<int32_t>(); tensor) {
-              Tensor<int64_t> out = (Tensor<int64_t>)tensor.value();
-              return out.values;
-            } else if (auto tensor = value.getTensor<int64_t>(); tensor) {
-              return tensor.value().values;
-            } else {
-              throw std::invalid_argument(
-                  "Value isn't a tensor or has an unsupported "
-                  "bitwidth");
-            }
-          },
-          "Return the data from a Value, assuming it is a tensor of signed "
-          "elements.")
-      .def(
-          "get_shape",
-          [](Value &value) {
-            std::vector<size_t> dims = value.getDimensions();
-            return std::vector<int64_t>{dims.begin(), dims.end()};
-          },
-          "Return the shape of a Value.")
-      .def(
-          "is_scalar", [](Value &value) { return value.isScalar(); },
-          "Return if the value is a scalar (as opposed to a tensor).")
-      .def(
-          "is_signed", [](Value &value) { return value.isSigned(); },
-          "Return if the value has signed elements.")
-      .def(
-          "get_unsigned_scalar",
-          [](Value &value) {
-            if (value.isScalar() && value.hasElementType<uint64_t>()) {
-              return value.getTensor<uint64_t>()->values[0];
-            }
-            throw std::invalid_argument("Value isn't an u64 scalar");
-          },
-          "Return the scalar from a Value, assuming it is an u64 scalar.")
-      .def(
-          "get_signed_scalar",
-          [](Value &value) {
-            if (value.isScalar() && value.hasElementType<int64_t>()) {
-              return value.getTensor<int64_t>()->values[0];
-            }
-            throw std::invalid_argument("Value isn't a i64 scalar");
-          },
-          "Return the scalar from a Value, assuming it is an i64 scalar.")
       .doc() = "Private / Runtime value.";
 
-  // ------------------------------------------------------------------------------//
-  // PUBLIC ARGUMENTS //
-  // ------------------------------------------------------------------------------//
+  // // ------------------------------------------------------------------------------//
+  // // PUBLIC ARGUMENTS //
+  // // ------------------------------------------------------------------------------//
 
-  struct PublicArguments {
-    std::vector<TransportValue> values;
-  };
-  pybind11::class_<PublicArguments, std::unique_ptr<PublicArguments>>(
-      m, "PublicArguments")
-      .def(init([](std::vector<TransportValue> &buffers) {
-             return PublicArguments{buffers};
-           }),
-           arg("transport_values"))
-      .def_static(
-          "deserialize",
-          [](const pybind11::bytes &buffer) {
-            auto publicArgumentsProto =
-                Message<concreteprotocol::PublicArguments>();
-            if (publicArgumentsProto.readBinaryFromString(buffer)
-                    .has_failure()) {
-              throw std::runtime_error(
-                  "Failed to deserialize public arguments.");
-            }
-            std::vector<TransportValue> values;
-            for (auto arg : publicArgumentsProto.asReader().getArgs()) {
-              values.push_back(arg);
-            }
-            PublicArguments output{values};
-            return std::make_unique<PublicArguments>(std::move(output));
-          },
-          "Deserializes a PublicArguments from bytes.", arg("byte"))
-      .def(
-          "serialize",
-          [](PublicArguments &publicArgument) {
-            auto publicArgumentsSerialize =
-                [](PublicArguments &publicArguments) {
-                  auto publicArgumentsProto =
-                      Message<concreteprotocol::PublicArguments>();
-                  auto argBuilder = publicArgumentsProto.asBuilder().initArgs(
-                      publicArguments.values.size());
-                  for (size_t i = 0; i < publicArguments.values.size(); i++) {
-                    argBuilder.setWithCaveats(
-                        i, publicArguments.values[i].asReader());
-                  }
-                  auto maybeBuffer = publicArgumentsProto.writeBinaryToString();
-                  if (maybeBuffer.has_failure()) {
-                    throw std::runtime_error(
-                        "Failed to serialize public arguments.");
-                  }
-                  return maybeBuffer.value();
-                };
-            return pybind11::bytes(publicArgumentsSerialize(publicArgument));
-          },
-          "Serialize a PublicArguments to bytes.")
-      .doc() = "Public arguments to be sent from the client to the server "
-               "before execution.";
+  // struct PublicArguments {
+  //   std::vector<TransportValue> values;
+  // };
+  // pybind11::class_<PublicArguments, std::unique_ptr<PublicArguments>>(
+  //     m, "PublicArguments")
+  //     .def(init([](std::vector<TransportValue> &buffers) {
+  //            return PublicArguments{buffers};
+  //          }),
+  //          arg("transport_values"))
+  //     .def_static(
+  //         "deserialize",
+  //         [](const pybind11::bytes &buffer) {
+  //           auto publicArgumentsProto =
+  //               Message<concreteprotocol::PublicArguments>();
+  //           if (publicArgumentsProto.readBinaryFromString(buffer)
+  //                   .has_failure()) {
+  //             throw std::runtime_error(
+  //                 "Failed to deserialize public arguments.");
+  //           }
+  //           std::vector<TransportValue> values;
+  //           for (auto arg : publicArgumentsProto.asReader().getArgs()) {
+  //             values.push_back(arg);
+  //           }
+  //           PublicArguments output{values};
+  //           return std::make_unique<PublicArguments>(std::move(output));
+  //         },
+  //         "Deserializes a PublicArguments from bytes.", arg("byte"))
+  //     .def(
+  //         "serialize",
+  //         [](PublicArguments &publicArgument) {
+  //           auto publicArgumentsSerialize =
+  //               [](PublicArguments &publicArguments) {
+  //                 auto publicArgumentsProto =
+  //                     Message<concreteprotocol::PublicArguments>();
+  //                 auto argBuilder = publicArgumentsProto.asBuilder().initArgs(
+  //                     publicArguments.values.size());
+  //                 for (size_t i = 0; i < publicArguments.values.size(); i++) {
+  //                   argBuilder.setWithCaveats(
+  //                       i, publicArguments.values[i].asReader());
+  //                 }
+  //                 auto maybeBuffer = publicArgumentsProto.writeBinaryToString();
+  //                 if (maybeBuffer.has_failure()) {
+  //                   throw std::runtime_error(
+  //                       "Failed to serialize public arguments.");
+  //                 }
+  //                 return maybeBuffer.value();
+  //               };
+  //           return pybind11::bytes(publicArgumentsSerialize(publicArgument));
+  //         },
+  //         "Serialize a PublicArguments to bytes.")
+  //     .doc() = "Public arguments to be sent from the client to the server "
+  //              "before execution.";
 
-  // ------------------------------------------------------------------------------//
-  // PUBLIC RESULT //
-  // ------------------------------------------------------------------------------//
-  struct PublicResults {
-    std::vector<TransportValue> values;
-  };
-  pybind11::class_<PublicResults>(m, "PublicResults")
-      .def(init([]() -> PublicResults {
-        throw std::runtime_error("Explicit construction forbidden.");
-      }))
-      .def_static(
-          "deserialize",
-          [](const pybind11::bytes &buffer) {
-            auto publicResultsProto =
-                Message<concreteprotocol::PublicResults>();
-            if (publicResultsProto.readBinaryFromString(buffer).has_failure()) {
-              throw std::runtime_error("Failed to deserialize public results.");
-            }
-            std::vector<TransportValue> values;
-            for (auto res : publicResultsProto.asReader().getResults()) {
-              values.push_back(res);
-            }
-            PublicResults output{values};
-            return std::make_unique<PublicResults>(std::move(output));
-          },
-          "Deserialize a PublicResults from bytes", arg("bytes"))
-      .def(
-          "serialize",
-          [](PublicResults &publicResult) {
-            auto publicResultSerialize = [](PublicResults &publicResult) {
-              std::string buffer;
-              auto publicResultsProto =
-                  Message<concreteprotocol::PublicResults>();
-              auto resBuilder = publicResultsProto.asBuilder().initResults(
-                  publicResult.values.size());
-              for (size_t i = 0; i < publicResult.values.size(); i++) {
-                resBuilder.setWithCaveats(i, publicResult.values[i].asReader());
-              }
-              auto maybeBuffer = publicResultsProto.writeBinaryToString();
-              if (maybeBuffer.has_failure()) {
-                throw std::runtime_error("Failed to serialize public results.");
-              }
-              return maybeBuffer.value();
-            };
-            return pybind11::bytes(publicResultSerialize(publicResult));
-          },
-          "Serialize a PublicResults to bytes.")
-      .def(
-          "n_values",
-          [](const PublicResults &publicResult) {
-            return publicResult.values.size();
-          },
-          "Return the number of values.")
-      .def(
-          "get_value",
-          [](PublicResults &publicResult, size_t position) {
-            if (position >= publicResult.values.size()) {
-              throw std::runtime_error("Failed to get public result value.");
-            }
-            return publicResult.values[position];
-          },
-          "Get the `n`-th value from the results", arg("n"))
-      .doc() = "Public results to be sent from the server to the client after "
-               "execution.";
+  // // ------------------------------------------------------------------------------//
+  // // PUBLIC RESULT //
+  // // ------------------------------------------------------------------------------//
+  // struct PublicResults {
+  //   std::vector<TransportValue> values;
+  // };
+  // pybind11::class_<PublicResults>(m, "PublicResults")
+  //     .def_static(
+  //         "deserialize",
+  //         [](const pybind11::bytes &buffer) {
+  //           auto publicResultsProto =
+  //               Message<concreteprotocol::PublicResults>();
+  //           if (publicResultsProto.readBinaryFromString(buffer).has_failure()) {
+  //             throw std::runtime_error("Failed to deserialize public results.");
+  //           }
+  //           std::vector<TransportValue> values;
+  //           for (auto res : publicResultsProto.asReader().getResults()) {
+  //             values.push_back(res);
+  //           }
+  //           PublicResults output{values};
+  //           return std::make_unique<PublicResults>(std::move(output));
+  //         },
+  //         "Deserialize a PublicResults from bytes", arg("bytes"))
+  //     .def(
+  //         "serialize",
+  //         [](PublicResults &publicResult) {
+  //           auto publicResultSerialize = [](PublicResults &publicResult) {
+  //             std::string buffer;
+  //             auto publicResultsProto =
+  //                 Message<concreteprotocol::PublicResults>();
+  //             auto resBuilder = publicResultsProto.asBuilder().initResults(
+  //                 publicResult.values.size());
+  //             for (size_t i = 0; i < publicResult.values.size(); i++) {
+  //               resBuilder.setWithCaveats(i, publicResult.values[i].asReader());
+  //             }
+  //             auto maybeBuffer = publicResultsProto.writeBinaryToString();
+  //             if (maybeBuffer.has_failure()) {
+  //               throw std::runtime_error("Failed to serialize public results.");
+  //             }
+  //             return maybeBuffer.value();
+  //           };
+  //           return pybind11::bytes(publicResultSerialize(publicResult));
+  //         },
+  //         "Serialize a PublicResults to bytes.")
+  //     .def(
+  //         "n_values",
+  //         [](const PublicResults &publicResult) {
+  //           return publicResult.values.size();
+  //         },
+  //         "Return the number of values.")
+  //     .def(
+  //         "get_value",
+  //         [](PublicResults &publicResult, size_t position) {
+  //           if (position >= publicResult.values.size()) {
+  //             throw std::runtime_error("Failed to get public result value.");
+  //           }
+  //           return publicResult.values[position];
+  //         },
+  //         "Get the `n`-th value from the results", arg("n"))
+  //     .doc() = "Public results to be sent from the server to the client after "
+  //              "execution.";
 
   // ------------------------------------------------------------------------------//
   // SERVER CIRCUIT //
   // ------------------------------------------------------------------------------//
 
   pybind11::class_<ServerCircuit>(m, "ServerCircuit")
-      .def(init([]() -> ServerCircuit {
-        throw std::runtime_error("Explicit construction forbidden.");
-      }))
       .def(
           "call",
           [](ServerCircuit &circuit, std::vector<TransportValue> args,

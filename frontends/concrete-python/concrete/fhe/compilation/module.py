@@ -130,66 +130,19 @@ class FheFunction:
 
         return self.simulation_runtime.val.client.encrypt(*args, function_name=self.name)
 
-    def run(
+    def _simulate_run(
         self,
         *args: Optional[Union[TransportValue, Tuple[Optional[TransportValue], ...]]],
     ) -> Union[TransportValue, Tuple[TransportValue, ...]]:
-        """
-        Evaluate the function.
 
-        Args:
-            *args (Value):
-                argument(s) for evaluation
+        return self.simulation_runtime.val.server.run(*args, function_name=self.name)
 
-        Returns:
-            Union[Value, Tuple[Value, ...]]:
-                result(s) of evaluation
-        """
-
-        if self.configuration.simulate_encrypt_run_decrypt:
-            return self.simulate(*args)
-
-        return self.execution_runtime.val.server.run(
-            *args,
-            evaluation_keys=self.execution_runtime.val.client.evaluation_keys,
-            function_name=self.name,
-        )
-
-    def decrypt(
+    def _simulate_decrypt(
         self,
         *results: Union[TransportValue, Tuple[TransportValue, ...]],
     ) -> Optional[Union[int, np.ndarray, Tuple[Optional[Union[int, np.ndarray]], ...]]]:
-        """
-        Decrypt result(s) of evaluation.
 
-        Args:
-            *results (Union[Value, Tuple[Value, ...]]):
-                result(s) of evaluation
-
-        Returns:
-            Optional[Union[int, np.ndarray, Tuple[Optional[Union[int, np.ndarray]], ...]]]:
-                decrypted result(s) of evaluation
-        """
-
-        if self.configuration.simulate_encrypt_run_decrypt:
-            return results if len(results) != 1 else results[0]  # type: ignore
-
-        return self.execution_runtime.val.client.decrypt(*results, function_name=self.name)
-
-    def encrypt_run_decrypt(self, *args: Any) -> Any:
-        """
-        Encrypt inputs, run the function, and decrypt the outputs in one go.
-
-        Args:
-            *args (Union[int, numpy.ndarray]):
-                inputs to the function
-
-        Returns:
-            Union[int, np.ndarray, Tuple[Union[int, np.ndarray], ...]]:
-                clear result of homomorphic evaluation
-        """
-        return self.decrypt(self.run(self.encrypt(*args)))
-
+        return self.simulation_runtime.val.client.decrypt(*results, function_name=self.name)
 
     def simulate(self, *args: Any) -> Any:
         """
@@ -204,26 +157,7 @@ class FheFunction:
                 result of the simulation
         """
 
-        ordered_validated_args = validate_input_args(
-            self.simulation_runtime.val.server.client_specs, *args, function_name=self.name
-        )
-
-        unprepared_args = [Value(arg) for position, arg in enumerate(ordered_validated_args)]
-
-        prepared_args = [self.simulation_runtime.val.client.encrypt()]
-
-
-        results = self.simulation_runtime.val.server.run(*exported, function_name=self.name)
-        if not isinstance(results, tuple):
-            results = (results,)
-
-        decrypter = SimulatedValueDecrypter.new(
-            self.simulation_runtime.val.server.client_specs.program_info, self.name
-        )
-        decrypted = tuple(
-            decrypter.decrypt(position, result.inner) for position, result in enumerate(results)
-        )
-        return decrypted if len(decrypted) != 1 else decrypted[0]
+        return self._simulate_decrypt(self._simulate_run(self._simulate_encrypt(*args)))
 
     def encrypt(
         self,
@@ -691,7 +625,7 @@ class FheModule:
         return str(self.mlir_module).strip()
 
     @property
-    def keys(self) -> Keys:
+    def keys(self) -> Optional[Keys]:
         """
         Get the keys of the module.
         """

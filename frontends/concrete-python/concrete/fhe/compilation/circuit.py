@@ -16,7 +16,8 @@ from .configuration import Configuration
 from .keys import Keys
 from .module import FheFunction, FheModule
 from .server import Server
-from .value import Value
+
+from concrete.compiler import TransportValue, Parameter
 
 # pylint: enable=import-error,no-member,no-name-in-module
 
@@ -108,35 +109,7 @@ class Circuit:
                 result of the simulation
         """
 
-        if not hasattr(self, "simulator"):  # pragma: no cover
-            self.enable_fhe_simulation()
-
-        ordered_validated_args = validate_input_args(self.simulator.client_specs, *args)
-
-        exporter = SimulatedValueExporter.new(self.simulator.client_specs.program_info)
-        exported = [
-            (
-                None
-                if arg is None
-                else Value(
-                    exporter.export_tensor(position, arg.flatten().tolist(), list(arg.shape))
-                    if isinstance(arg, np.ndarray) and arg.shape != ()
-                    else exporter.export_scalar(position, int(arg))
-                )
-            )
-            for position, arg in enumerate(ordered_validated_args)
-        ]
-
-        results = self.simulator.run(*exported)
-        if not isinstance(results, tuple):
-            results = (results,)
-
-        decrypter = SimulatedValueDecrypter.new(self.simulator.client_specs.program_info)
-        decrypted = tuple(
-            decrypter.decrypt(position, result.inner) for position, result in enumerate(results)
-        )
-
-        return decrypted if len(decrypted) != 1 else decrypted[0]
+        return self._function.simulate(*args)
 
     @property
     def keys(self) -> Keys:
@@ -173,7 +146,7 @@ class Circuit:
     def encrypt(
         self,
         *args: Optional[Union[int, np.ndarray, List]],
-    ) -> Optional[Union[Value, Tuple[Optional[Value], ...]]]:
+    ) -> Optional[Union[TransportValue, Tuple[Optional[TransportValue], ...]]]:
         """
         Encrypt argument(s) to for evaluation.
 
@@ -189,8 +162,8 @@ class Circuit:
 
     def run(
         self,
-        *args: Optional[Union[Value, Tuple[Optional[Value], ...]]],
-    ) -> Union[Value, Tuple[Value, ...]]:
+        *args: Optional[Union[TransportValue, Tuple[Optional[TransportValue], ...]]],
+    ) -> Union[TransportValue, Tuple[TransportValue, ...]]:
         """
         Evaluate the circuit.
 
@@ -207,7 +180,7 @@ class Circuit:
 
     def decrypt(
         self,
-        *results: Union[Value, Tuple[Value, ...]],
+        *results: Union[TransportValue, Tuple[TransportValue, ...]],
     ) -> Optional[Union[int, np.ndarray, Tuple[Optional[Union[int, np.ndarray]], ...]]]:
         """
         Decrypt result(s) of evaluation.
