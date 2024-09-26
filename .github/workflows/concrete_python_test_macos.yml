@@ -122,7 +122,6 @@ jobs:
         run: |
 
           set -e
-          export TEST_TMP_DIR="testing_concrete_python"
           cd $TEST_TMP_DIR && . .testenv/bin/activate
           KEY_CACHE_DIRECTORY=./KeySetCache PYTEST_MARKERS="not dataflow and not graphviz" make pytest-macos
 
